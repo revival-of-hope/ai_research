@@ -1,0 +1,13 @@
+from typing import Protocol, Self
+
+from app.application.repo.workspace import AccountRepo, DocumentRepo
+
+
+class WorkspaceUow(Protocol):
+    accounts: AccountRepo
+    documents: DocumentRepo
+
+    def __enter__(self) -> Self: ...
+    def __exit__(self, *exc) -> None: ...
+    def commit(self) -> None: ...
+    def rollback(self) -> None: ...

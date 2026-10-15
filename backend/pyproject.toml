@@ -1,0 +1,38 @@
+[project]
+name = "ai-research-assistant-api"
+version = "2.0.0"
+description = "DDD research workspace with bounded Pydantic AI agent teams"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.14,<2",
+  "anyio>=4,<5",
+  "cryptography>=44,<46",
+  "ddgs>=9,<10",
+  "email-validator>=2.2,<3",
+  "fastapi>=0.115,<1",
+  "httpx>=0.28,<1",
+  "psycopg[binary]>=3.2,<4",
+  "pwdlib[argon2]>=0.2,<1",
+  "pydantic-settings>=2.7,<3",
+  "pydantic-ai-slim[openai]>=1.0,<2",
+  "pypdf>=5,<7",
+  "pyjwt>=2.10,<3",
+  "python-docx>=1.1,<2",
+  "python-multipart>=0.0.20,<1",
+  "sqlmodel>=0.0.24,<1",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<9",
+  "ruff>=0.9,<1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

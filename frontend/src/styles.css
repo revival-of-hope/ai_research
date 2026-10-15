@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #0f172a;
+  background: #f8fafc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, textarea, select { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+:focus-visible { outline: 2px solid #93c5fd; outline-offset: 3px; }
+button, a { -webkit-tap-highlight-color: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+}
+
+.control-chip { display: inline-flex; height: 34px; align-items: center; justify-content: center; gap: 6px; border-width: 1px; border-style: solid; border-radius: 9px; padding: 0 10px; font-size: 12px; transition: background 150ms; }
+.control-chip:hover:not(:disabled) { filter: brightness(.98); }
+.control-chip:disabled { opacity: .5; }
+.compact-select { height: 25px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; padding: 0 3px; font-size: 11px; color: #475569; }
+.report-action { display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; padding: 6px 8px; font-size: 11px; }
+.report-action:hover { background: #f8fafc; color: #475569; }
+.research-markdown { color: #334155; font-size: 14px; line-height: 1.95; overflow-wrap: anywhere; }
+.research-markdown > :first-child { margin-top: 0; }
+.research-markdown > :last-child { margin-bottom: 0; }
+.research-markdown p { margin: 0 0 1em; }
+.research-markdown h1, .research-markdown h2, .research-markdown h3, .research-markdown h4 { color: #0f172a; font-weight: 650; letter-spacing: -.02em; line-height: 1.5; margin: 1.5em 0 .65em; }
+.research-markdown h1 { font-size: 1.6em; }
+.research-markdown h2 { font-size: 1.3em; border-bottom: 1px solid #f1f5f9; padding-bottom: .4em; }
+.research-markdown h3 { font-size: 1.12em; }
+.research-markdown ul, .research-markdown ol { padding-left: 1.5em; margin: .6em 0 1.2em; }
+.research-markdown ul { list-style: disc; }
+.research-markdown ol { list-style: decimal; }
+.research-markdown li { padding-left: .25em; margin: .3em 0; }
+.research-markdown li > p { margin-bottom: .3em; }
+.research-markdown ul ul { list-style: circle; }
+.research-markdown a { color: #2563eb; text-decoration: underline; text-underline-offset: 3px; }
+.research-markdown a.citation-link { display: inline; padding: 1px 4px; margin: 0 2px; border-radius: 4px; background: #eff6ff; font-size: 10px; font-weight: 600; text-decoration: none; white-space: nowrap; vertical-align: baseline; }
+.research-markdown a.citation-link:hover { background: #dbeafe; }
+.research-markdown strong { color: #1e293b; font-weight: 650; }
+.research-markdown code { border-radius: 4px; background: #f1f5f9; padding: .15em .4em; color: #475569; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .85em; }
+.research-markdown pre { overflow-x: auto; margin: 1em 0; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; padding: 16px; line-height: 1.7; }
+.research-markdown pre code { background: none; padding: 0; font-size: 12px; }
+.research-markdown blockquote { margin: 1em 0; border-left: 3px solid #bfdbfe; padding: .3em 0 .3em 1em; color: #64748b; }
+.research-markdown blockquote > p:last-child { margin-bottom: 0; }
+.research-markdown hr { margin: 1.5em 0; border: 0; border-top: 1px solid #e2e8f0; }
+.markdown-table { overflow-x: auto; margin: 1em 0; border: 1px solid #e2e8f0; border-radius: 10px; }
+.markdown-table table { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.7; }
+.markdown-table th { background: #f8fafc; color: #475569; text-align: left; font-weight: 600; }
+.markdown-table th, .markdown-table td { min-width: 100px; border-bottom: 1px solid #e2e8f0; padding: 10px 12px; vertical-align: top; }
+.markdown-table tr:last-child td { border-bottom: 0; }
+.research-markdown input[type="checkbox"] { margin-right: 6px; accent-color: #2563eb; }
+.research-markdown img { max-width: 100%; border-radius: 10px; }
+@media (min-width: 640px) { .research-markdown { font-size: 15px; } }

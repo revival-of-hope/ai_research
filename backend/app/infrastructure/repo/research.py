@@ -104,6 +104,7 @@ class SqlResearchRepository:
             base_url=validate_provider_url(provider.base_url),
             model=provider.model,
             api_key=key,
+            provider_type=provider.provider_type,
         )
 
     def start(self, user_id: int, command: ResearchCommand) -> PreparedResearch:

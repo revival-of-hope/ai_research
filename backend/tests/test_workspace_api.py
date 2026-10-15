@@ -113,6 +113,134 @@ def test_provider_secret_updates_and_owner_boundary(workspace):
     assert client.delete(f"/api/account/providers/{preset['id']}").status_code == 404
 
 
+def test_provider_catalog_and_selection_survive_secret_preserving_update(workspace):
+    client, engine = workspace
+    assert client.get("/api/account/provider-catalog").status_code == 401
+    register(client)
+    catalog = client.get("/api/account/provider-catalog").json()
+    assert {entry["id"] for entry in catalog} >= {"openai", "deepseek", "qwen", "anthropic"}
+    deepseek = next(entry for entry in catalog if entry["id"] == "deepseek")
+    assert deepseek["base_url"] == "https://api.deepseek.com"
+    assert "deepseek-flash" in deepseek["models"]
+    preset = create_provider(client)
+    response = client.put(
+        f"/api/account/providers/{preset['id']}",
+        json={
+            "name": "DeepSeek",
+            "base_url": deepseek["base_url"],
+            "model": "deepseek-flash",
+            "provider_type": "deepseek",
+            "api_key": "private-test-key",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["provider_type"] == "deepseek"
+    assert client.get("/api/account/providers").json()[0]["provider_type"] == "deepseek"
+    legacy_update = client.put(
+        f"/api/account/providers/{preset['id']}",
+        json={
+            "name": "Renamed by old client",
+            "base_url": deepseek["base_url"],
+            "model": "deepseek-flash",
+        },
+    )
+    assert legacy_update.status_code == 200
+    assert legacy_update.json()["provider_type"] == "deepseek"
+    with Session(engine) as session:
+        from app.core.crypto import decrypt_secret
+
+        assert decrypt_secret(session.get(ApiProvider, preset["id"]).api_key_encrypted) == (
+            "private-test-key"
+        )
+
+
+def test_model_discovery_reuses_only_an_owned_secret_and_never_generates(workspace, monkeypatch):
+    client, _ = workspace
+    register(client)
+    preset = create_provider(client)
+    observed = []
+
+    async def discover(base_url, key):
+        observed.append((base_url, key))
+        return ["deepseek-flash", "deepseek-v4-pro"]
+
+    monkeypatch.setattr("app.api.accounts.discover_models", discover)
+    request = {"provider_id": preset["id"], "base_url": preset["base_url"]}
+    response = client.post("/api/account/provider-models", json=request)
+    assert response.status_code == 200
+    assert response.json()["source"] == "live"
+    assert response.json()["models"] == ["deepseek-flash", "deepseek-v4-pro"]
+    assert observed == [(preset["base_url"], "private-test-key")]
+    assert "private-test-key" not in response.text
+    register(client, "model-list-other@example.com")
+    assert client.post("/api/account/provider-models", json=request).status_code == 404
+    assert len(observed) == 1
+    assert (
+        client.post(
+            "/api/account/provider-models",
+            json={
+                "base_url": "https://api.deepseek.com",
+            },
+        ).status_code
+        == 422
+    )
+
+
+def test_changed_endpoint_cannot_reuse_a_stored_key(workspace, monkeypatch):
+    client, _ = workspace
+    register(client)
+    preset = create_provider(client)
+
+    async def must_not_request(*args):
+        pytest.fail("An old key must not be forwarded to a changed endpoint")
+
+    monkeypatch.setattr("app.api.accounts.discover_models", must_not_request)
+    discovery = client.post(
+        "/api/account/provider-models",
+        json={
+            "provider_id": preset["id"],
+            "base_url": "https://api.deepseek.com",
+        },
+    )
+    assert discovery.status_code == 422
+    assert "请求地址已改变" in discovery.json()["detail"]
+    update = client.put(
+        f"/api/account/providers/{preset['id']}",
+        json={
+            "name": "DeepSeek",
+            "model": "deepseek-flash",
+            "base_url": "https://api.deepseek.com",
+        },
+    )
+    assert update.status_code == 422
+    assert client.get("/api/account/providers").json()[0]["base_url"] == preset["base_url"]
+
+
+def test_connection_test_sanitizes_upstream_runtime_errors(workspace, monkeypatch):
+    import httpx
+
+    from app.infrastructure.agents import probe
+
+    client, _ = workspace
+    register(client)
+    preset = create_provider(client)
+
+    original = httpx.AsyncClient
+
+    def respond(request):
+        return httpx.Response(401, json={"error": {"message": "private-test-key"}})
+
+    class MockClient(original):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs, transport=httpx.MockTransport(respond))
+
+    monkeypatch.setattr(probe.httpx, "AsyncClient", MockClient)
+    response = client.post(f"/api/account/providers/{preset['id']}/test")
+    assert response.status_code == 502
+    assert "API key 未通过验证" in response.json()["detail"]
+    assert "private-test-key" not in response.text
+
+
 def test_documents_are_ingested_searchable_and_owned(workspace):
     client, _ = workspace
     register(client)

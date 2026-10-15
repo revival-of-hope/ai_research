@@ -120,6 +120,7 @@ class ProviderConfig:
     base_url: str
     model: str
     api_key: str = field(repr=False)
+    provider_type: str = "custom"
 
 
 @dataclass(frozen=True)

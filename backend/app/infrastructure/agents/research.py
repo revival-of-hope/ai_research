@@ -34,6 +34,8 @@ from app.domain.research import (
     ResearchLimits,
     ResearchResult,
 )
+from app.infrastructure.agents.errors import provider_error_message
+from app.infrastructure.agents.settings import responses_settings
 from app.infrastructure.search.web import WebSearchError, web_search
 
 
@@ -185,10 +187,15 @@ class PydanticResearchRunner:
         else:
             models = self._models
         settings: dict[str, Any] = {"max_tokens": 6_000, "timeout": 90}
-        if self.prepared.command.deep_thinking and self._models is None:
-            settings["openai_reasoning_effort"] = self.prepared.command.reasoning_effort
         if self._models is None:
-            settings["openai_store"] = False
+            settings.update(
+                responses_settings(
+                    self.prepared.provider.base_url,
+                    self.prepared.provider.provider_type,
+                    deep_thinking=self.prepared.command.deep_thinking,
+                    effort=self.prepared.command.reasoning_effort,
+                )
+            )
         for name, output, instructions in (
             (
                 "supervisor",
@@ -479,7 +486,9 @@ class PydanticResearchRunner:
                 if event is None:
                     break
                 if isinstance(event, Exception):
-                    raise event
+                    if isinstance(event, ResearchError):
+                        raise event
+                    raise ResearchError(provider_error_message(event)) from event
                 yield event
             await producer
         finally:

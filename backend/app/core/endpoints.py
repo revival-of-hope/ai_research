@@ -14,8 +14,8 @@ def validate_provider_url(base_url: str) -> str:
         raise InvalidInput("Base URL 必须是 HTTP 或 HTTPS 地址")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise InvalidInput("Base URL 不能包含凭据、查询参数或片段")
-    if parsed.path.endswith(("/responses", "/chat/completions")):
-        raise InvalidInput("Base URL 应填写版本根路径，不要包含 /responses")
+    if parsed.path.endswith(("/responses", "/chat/completions", "/messages", "/models")):
+        raise InvalidInput("Base URL 应填写 API 根路径，不要包含具体接口路径")
     if not settings.allow_private_api_endpoints:
         host = parsed.hostname.lower().rstrip(".")
         if host == "localhost" or host.endswith((".localhost", ".local")):

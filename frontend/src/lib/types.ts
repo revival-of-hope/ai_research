@@ -26,6 +26,15 @@ export type ProviderUsage = {
   total_tokens: number;
 };
 
+export type ProviderType = "openai" | "deepseek" | "qwen" | "anthropic" | "custom";
+export type ProviderCatalogEntry = {
+  id: ProviderType;
+  name: string;
+  base_url: string;
+  models: string[];
+};
+export type ProviderModels = { models: string[]; source: "live"; message?: string };
+
 export type Provider = {
   id: number;
   name: string;
@@ -33,6 +42,7 @@ export type Provider = {
   model: string;
   compatible: boolean;
   has_api_key: boolean;
+  provider_type: ProviderType;
 };
 
 export type SourceDocument = {

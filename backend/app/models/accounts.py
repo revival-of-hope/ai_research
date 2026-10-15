@@ -28,4 +28,5 @@ class ApiProvider(SQLModel, table=True):
     base_url: str = Field(max_length=500)
     model: str = Field(max_length=120)
     api_key_encrypted: str = Field(sa_column=Column(Text, nullable=False))
+    provider_type: str = Field(default="custom", max_length=30)
     updated_at: datetime = Field(default_factory=utcnow)

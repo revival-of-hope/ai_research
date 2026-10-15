@@ -28,12 +28,12 @@ export function GuidePanel() {
   return <div className="space-y-5">
     <div><h2 className="text-lg font-semibold">从问题到研究报告</h2><p className="mt-1 text-xs leading-6 text-slate-500">准备好模型与资料，就可以开始研究。</p></div>
     {[
-      ["01", "连接模型", "在模型预设中填写真实的模型 ID、支持 Responses API 的 Base URL 与 API Key。保存后在输入框选择预设。"],
+      ["01", "连接模型", "在模型预设中选择 OpenAI、DeepSeek、Qwen、Claude 或自定义提供方，自动填入地址与推荐模型。全部使用 Responses API；Claude 需填写自己的兼容网关地址。填写 API Key 后可获取接口返回的模型列表，保存后在输入框选择预设。"],
       ["02", "确定研究范围", "选择深度研究或快速问答。联网搜索使用 DDGS；上传的资料只有在输入框中明确勾选后才会参与本轮检索。"],
       ["03", "设置研究预算", "深度研究可设置协作智能体数量和子智能体派生层级。更高的预算允许探索更多子问题，也可能增加耗时与模型用量。推理强度是模型参数，与协作智能体数量分开设置。"],
       ["04", "跟踪过程，阅读结果", "研究计划和智能体任务会在回答中实时更新。可以停止正在执行的研究；完成后查看逐条来源，复制或导出 Markdown 报告。"],
     ].map(([number, title, text]) => <div key={number} className="flex gap-3 rounded-2xl border border-slate-200 p-4"><span className="text-xs font-semibold text-blue-500">{number}</span><div><h3 className="text-sm font-semibold text-slate-700">{title}</h3><p className="mt-1.5 text-xs leading-6 text-slate-500">{text}</p></div></div>)}
-    <div className="rounded-2xl bg-slate-50 p-4"><h3 className="text-xs font-semibold text-slate-600">连接失败时</h3><p className="mt-2 text-xs leading-6 text-slate-500">401/403：检查密钥与账号权限。404：检查 Base URL 是否正确。400/422：检查模型 ID、Responses 协议与推理参数是否被服务商支持。连接测试会发送真实模型请求并产生少量用量。</p></div>
+    <div className="rounded-2xl bg-slate-50 p-4"><h3 className="text-xs font-semibold text-slate-600">连接失败时</h3><p className="mt-2 text-xs leading-6 text-slate-500">401/403：检查密钥与账号权限。404：检查 Base URL 是否正确。400/422：检查模型 ID、Responses API 与推理参数是否被服务商支持。推荐模型列表不代表账号已获授权；获取模型列表不发送生成请求，连接测试会发送真实模型请求并产生少量用量。</p></div>
   </div>;
 }
 

@@ -51,6 +51,16 @@ test("validation errors remain readable instead of rendering an object", async (
   await assert.rejects(api("/research/conversations"), { message: "Question is too short", status: 422 });
 });
 
+test("safe service errors stay specific for model discovery and research streams", async (context) => {
+  const original = globalThis.fetch;
+  context.after(() => { globalThis.fetch = original; });
+  const message = "服务商拒绝请求（401）：请检查 API Key 与模型权限。";
+  globalThis.fetch = async () => new Response(JSON.stringify({ detail: message }), { status: 502 });
+  await assert.rejects(api("/account/provider-models", { method: "POST", body: "{}" }), { message, status: 502 });
+  globalThis.fetch = async () => new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`);
+  await assert.rejects(runResearchStream({}, { onMeta() {}, onDelta() {}, onEvent() {}, onDone() { assert.fail("an errored stream cannot complete"); } }, new AbortController().signal), { message });
+});
+
 test("history restores failed and cancelled activity beside the correct question without duplicating reports", () => {
   const sources = [{ label: "Doc 1", title: "notes.md" }];
   const events = [{ type: "agent", data: { id: "child", parent_id: "r1", name: "证据核验", status: "failed" } }];

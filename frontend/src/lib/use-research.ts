@@ -171,8 +171,9 @@ export function useResearch(userId?: number) {
       } else if (abort.signal.aborted) {
         updateAssistant((current) => ({ ...current, status: "cancelled" }));
       } else {
-        updateAssistant((current) => ({ ...current, status: "failed" }));
-        setError(reason instanceof Error ? reason.message : "研究请求失败");
+        const message = reason instanceof Error ? reason.message : "研究请求失败";
+        updateAssistant((current) => ({ ...current, status: "failed", error: message }));
+        setError(message);
       }
     } finally {
       controller.current = null;

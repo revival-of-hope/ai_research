@@ -65,6 +65,7 @@ class AccountService:
             "model": preset.model,
             "compatible": True,
             "has_api_key": bool(preset.api_key_encrypted),
+            "provider_type": preset.provider_type,
         }
 
     def providers(self, user_id: int) -> list[dict]:
@@ -87,11 +88,14 @@ class AccountService:
                 else ModelPreset(None, user_id, name, base_url, model, "")
             )
             key = (data.get("api_key") or "").strip()
+            if not key and preset.base_url.rstrip("/") != base_url:
+                raise InvalidInput("请求地址已改变，请填写对应服务商的 API key 后保存")
             if key:
                 preset.api_key_encrypted = self.encrypt(key)
             if not preset.api_key_encrypted:
                 raise InvalidInput("新建模型预设需要 API key")
             preset.name, preset.base_url, preset.model = name, base_url, model
+            preset.provider_type = data.get("provider_type", preset.provider_type)
             saved = self.uow.accounts.save_provider(preset)
             result = self.public_provider(saved)
             self.uow.commit()

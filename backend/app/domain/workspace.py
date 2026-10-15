@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from app.domain.providers import ProviderType
+
 
 class WorkspaceError(Exception):
     pass
@@ -56,6 +58,7 @@ class ModelPreset:
     base_url: str
     model: str
     api_key_encrypted: str = field(repr=False)
+    provider_type: ProviderType = "custom"
 
 
 @dataclass

@@ -167,6 +167,7 @@ def test_request_budget_is_hard_and_failed_run_has_no_success_message(database):
     prepared = workspace.prepare(database[1], command)
     events = asyncio.run(collect(workspace, prepared))
     assert events[-1].type == "error"
+    assert "预算" in events[-1].data["message"]
     assert not any(item.type == "done" for item in events)
     with Session(database[0]) as session:
         run = session.get(ResearchRun, prepared.run_id)
@@ -189,6 +190,24 @@ def test_upstream_exception_body_is_never_exposed_or_persisted(database):
     assert "do-not-expose" not in json.dumps(events[-1].data)
     assert "do-not-expose" not in trace
     assert "private prompt" not in trace
+
+
+def test_upstream_http_error_keeps_safe_actionable_reason_in_failed_run(database):
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    def forbidden_model(messages, info):
+        raise ModelHTTPError(401, "deepseek-flash", body={"key": "do-not-expose"})
+
+    workspace = service(database, models(FunctionModel(forbidden_model)))
+    prepared = workspace.prepare(database[1], ResearchCommand("Research the evidence"))
+    events = asyncio.run(collect(workspace, prepared))
+    assert events[-1].type == "error"
+    assert "API key 未通过验证" in events[-1].data["message"]
+    with Session(database[0]) as session:
+        run = session.get(ResearchRun, prepared.run_id)
+        assert run.status == "failed"
+        assert run.error == events[-1].data["message"]
+        assert "do-not-expose" not in json.dumps(run.model_dump(mode="json"))
 
 
 def test_cancel_propagates_to_model_and_saves_only_cancelled_run(database):

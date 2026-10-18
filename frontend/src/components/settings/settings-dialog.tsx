@@ -30,7 +30,7 @@ export function GuidePanel() {
     {[
       ["01", "连接模型", "在模型预设中选择 OpenAI、DeepSeek、Qwen、Claude 或自定义提供方，自动填入地址与推荐模型。全部使用 Responses API；Claude 需填写自己的兼容网关地址。填写 API Key 后可获取接口返回的模型列表，保存后在输入框选择预设。"],
       ["02", "确定回答模式", "快速问答由所选模型直接回答；深度研究会规划研究并协作处理子任务。联网搜索使用模型提供方的官方搜索能力；上传的资料只有在输入框中明确勾选后才会参与本轮检索。"],
-      ["03", "设置研究预算", "深度研究栏固定显示协作智能体数量和子智能体派生层级。更高的预算允许探索更多子问题，也可能增加耗时与模型用量。快速问答不使用这些研究设置。"],
+      ["03", "设置研究预算", "在左侧边栏切换回答模式；深度研究下可直接调整协作智能体数量和子智能体派生层级。手机上点击顶部模式按钮打开边栏。更高的预算可能增加耗时与模型用量，快速问答不使用这些研究设置。"],
       ["04", "跟踪过程，阅读结果", "深度研究的计划和智能体任务会在回答中实时更新。快速问答直接显示回答内容。两种模式都可以停止生成，完成后查看来源，复制或导出 Markdown。"],
     ].map(([number, title, text]) => <div key={number} className="flex gap-3 rounded-2xl border border-slate-200 p-4"><span className="text-xs font-semibold text-blue-500">{number}</span><div><h3 className="text-sm font-semibold text-slate-700">{title}</h3><p className="mt-1.5 text-xs leading-6 text-slate-500">{text}</p></div></div>)}
     <div className="rounded-2xl bg-slate-50 p-4"><h3 className="text-xs font-semibold text-slate-600">连接失败时</h3><p className="mt-2 text-xs leading-6 text-slate-500">401/403：检查密钥与账号权限。404：检查 Base URL 是否正确。400/422：检查模型 ID、Responses API 与推理参数是否被服务商支持。推荐模型列表不代表账号已获授权；获取模型列表不发送生成请求，连接测试会发送真实模型请求并产生少量用量。</p></div>

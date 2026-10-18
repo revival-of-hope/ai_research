@@ -16,7 +16,7 @@ import anyio
 import httpx
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai import Agent, ModelRetry, NativeOutput, RunContext
 from pydantic_ai.messages import ModelMessage, ModelResponse
 from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
 from pydantic_ai.models.openai import OpenAIResponsesModel
@@ -170,6 +170,11 @@ class PydanticResearchRunner:
             self._evidence.append(f"[{label}] {chunk['filename']}\n{chunk['content'][:6_000]}")
 
     def _build_agents(self) -> None:
+        provider = self.prepared.provider
+        native_output = self._models is None and (
+            provider.provider_type == "deepseek"
+            or urlparse(provider.base_url).hostname == "api.deepseek.com"
+        )
         if self._models is None:
             # Both objects are run scoped and closed in stream() finally.
             self._http = httpx.AsyncClient(timeout=90, follow_redirects=False)
@@ -229,10 +234,19 @@ class PydanticResearchRunner:
                 ),
             ),
         ):
+            # DeepSeek exposes JSON Schema through Responses text.format. Using it
+            # avoids the framework's synthetic final_result tool and required tool
+            # choice in thinking mode. Real research tools remain auto-selected;
+            # Pydantic still validates the output and bounds format retries.
+            output_type = (
+                NativeOutput(output, strict=False)
+                if native_output and output is not str
+                else output
+            )
             self._agents[name] = Agent(
                 BudgetedModel(models[name], self),
                 name=f"research_{name}",
-                output_type=output,
+                output_type=output_type,
                 deps_type=ResearcherDeps if name == "researcher" else None,
                 instructions=_EVIDENCE_POLICY + "\n" + instructions,
                 model_settings=settings,

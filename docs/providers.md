@@ -32,6 +32,20 @@
 
 「测试连接」只验证基本正文响应，不保证完整研究能力；真实请求可能收费，由用户在界面主动触发。
 
+### DeepSeek 深度研究在计划阶段返回 400
+
+研究的结构化输出现在通过官方 Responses 的 `text.format.type=json_schema` 生成，使用 Pydantic AI `NativeOutput(..., strict=False)`。不再把提交计划、笔记和审阅结果表示为 `final_result` 函数，也不会因此自动发送强制 `tool_choice=required`。研究者仍可自动调用搜索和委派工具，推理保持 `medium`，Pydantic 的字段、引用校验和有限格式重试继续生效。
+
+该行为适用于 DeepSeek 类型预设和官方 `api.deepseek.com` 地址，包括旧版保存为自定义类型的官方地址。没有增加协议转换或修改已保存预设。OpenAI 的现有输出方式保留。
+
+本次截图只提供通用的参数拒绝提示；当前容器日志没有记录具体拒绝字段，因此不能把模拟的 `required + thinking` 错误当作服务商的实际错误正文。回归测试验证的是原生 JSON Schema 请求、真实工具循环和失败边界，没有使用真实账户进行付费重放。[Responses 官方参数](https://api-docs.deepseek.com/api/create-response/)
+
+已有 Docker 容器不会自动加载代码修改。本地重建后端并重建前端容器以刷新代理连接（保留数据库和上传卷）：
+
+```bash
+docker compose up -d --build --no-deps --force-recreate backend frontend
+```
+
 `Failed to fetch` 是浏览器连接失败或响应流断开的表现，截图本身不足以区分服务未运行、代理、网络或模型问题。现在界面区分建立连接、读取响应与 SSE 中断，并保留取消语义；不要自动重试生成请求以免重复执行。原生开发代理固定连接 `127.0.0.1:8000`，Nginx 使用 HTTP/1.1、关闭缓冲并透传 SSE 心跳。若仍出现连接问题，先检查 `/api/health` 和部署的容器 / 代理日志。
 
 ## 密钥与升级

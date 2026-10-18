@@ -1,4 +1,4 @@
-import { ArrowUp, BookOpen, Check, ChevronDown, FileText, Globe2, MessageSquareText, Plus, Settings2, Square, X } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, FileText, Globe2, Plus, Square, X } from "lucide-react";
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import type { Provider, ResearchMode, SourceDocument } from "@/lib/types";
@@ -12,17 +12,12 @@ type Props = {
   selectedDocs: number[];
   webSearch: boolean;
   mode: ResearchMode;
-  maxAgents: number;
-  maxDepth: number;
   busy: boolean;
   disabled?: boolean;
   spacious?: boolean;
   onChange: (value: string) => void;
   onToggleDocument: (id: number) => void;
   onToggleWeb: () => void;
-  onModeChange: (mode: ResearchMode) => void;
-  onMaxAgentsChange: (count: number) => void;
-  onMaxDepthChange: (depth: number) => void;
   onSelectProvider: (id: number) => void;
   onConfigureProviders: () => void;
   onOpenSources: () => void;
@@ -46,28 +41,9 @@ export function ResearchComposer(props: Props) {
 
   return (
     <form onSubmit={submit} className="relative w-full">
-      <div className="mb-4 overflow-hidden rounded-2xl border border-blue-100 bg-blue-50/40 p-1.5">
-      <div className="flex items-center gap-1 rounded-xl bg-slate-100/80 p-1 sm:w-fit" aria-label="回答模式">
-        {([
-          { id: "deep", title: "深度研究", detail: "多智能体协作", icon: BookOpen },
-          { id: "quick", title: "快速问答", detail: "单模型直接回答", icon: MessageSquareText },
-        ] as const).map(({ id, title, detail, icon: Icon }) => (
-          <button key={id} type="button" aria-pressed={props.mode === id} disabled={locked} onClick={() => props.onModeChange(id)} className={cn("flex flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-left transition disabled:opacity-60 sm:flex-none sm:px-4", props.mode === id ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-800")}>
-            <Icon className="size-4 shrink-0" />
-            <span><span className="block text-sm font-semibold">{title}</span><span className="hidden text-[11px] font-normal text-slate-400 sm:block">{detail}</span></span>
-          </button>
-        ))}
-      </div>
-      {props.mode === "deep" ? <fieldset disabled={locked} aria-label="深度研究设置" className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-blue-100 px-2 pb-2 pt-3 sm:px-3">
-        <div className="mr-auto"><span className="flex items-center gap-1.5 text-xs font-semibold text-blue-800"><Settings2 className="size-3.5" />深度研究设置</span><p className="mt-1 text-[10px] leading-4 text-slate-500">控制协作规模与子任务层级</p></div>
-        <label className="flex items-center gap-2 text-xs font-medium text-slate-600">协作智能体<select aria-label="最大智能体数" value={props.maxAgents} onChange={(event) => props.onMaxAgentsChange(Number(event.target.value))} className="h-9 min-w-16 rounded-lg border border-blue-200 bg-white px-2 text-xs text-blue-800 outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50">{[1, 2, 3, 4, 5, 6].map((count) => <option key={count} value={count}>{count} 个</option>)}</select></label>
-        <label className="flex items-center gap-2 text-xs font-medium text-slate-600">派生层级<select aria-label="子智能体最大派生层级" value={props.maxDepth} onChange={(event) => props.onMaxDepthChange(Number(event.target.value))} className="h-9 min-w-20 rounded-lg border border-blue-200 bg-white px-2 text-xs text-blue-800 outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50"><option value={0}>关闭派生</option><option value={1}>1 层</option><option value={2}>2 层</option></select></label>
-      </fieldset> : <p className="px-3 pb-2 pt-3 text-xs leading-5 text-slate-500">由所选模型直接回答，可使用服务商联网搜索和已选资料。</p>}
-      </div>
-
-      <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_8px_32px_rgba(15,23,42,0.06)] transition focus-within:border-blue-300 focus-within:shadow-[0_8px_32px_rgba(37,99,235,0.08)] sm:p-5">
+      <div className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_4px_24px_rgba(15,23,42,0.04)] transition focus-within:border-blue-300 focus-within:shadow-[0_4px_24px_rgba(37,99,235,0.06)] sm:px-5">
         <label htmlFor="research-question" className="sr-only">{props.mode === "deep" ? "研究问题" : "问答问题"}</label>
-        <textarea ref={textarea} id="research-question" value={props.value} disabled={locked} onChange={(event) => props.onChange(event.target.value)} onKeyDown={keyDown} rows={props.spacious ? 3 : 2} maxLength={20000} placeholder={props.mode === "deep" ? "你想深入研究什么？描述目标、范围和你期待的成果…" : "有什么想了解的？"} className="max-h-56 w-full resize-y border-0 bg-transparent px-1 text-[15px] leading-7 text-slate-900 outline-none placeholder:text-slate-400 disabled:opacity-60 sm:text-base" />
+        <textarea ref={textarea} id="research-question" value={props.value} disabled={locked} onChange={(event) => props.onChange(event.target.value)} onKeyDown={keyDown} rows={props.spacious ? 4 : 2} maxLength={20000} placeholder={props.mode === "deep" ? "你想深入研究什么？描述目标、范围和你期待的成果…" : "有什么想了解的？"} className="max-h-[min(28dvh,240px)] w-full resize-y border-0 bg-transparent px-1 text-[15px] leading-7 text-slate-900 outline-none placeholder:text-slate-400 disabled:opacity-60 sm:text-base" />
 
         {props.selectedDocs.length > 0 && <div className="mb-3 flex flex-wrap gap-1.5">
           {available.filter((doc) => props.selectedDocs.includes(doc.id)).map((doc) => <button key={doc.id} type="button" disabled={locked} onClick={() => props.onToggleDocument(doc.id)} title="移除资料" className="inline-flex max-w-48 items-center gap-1.5 rounded-lg bg-blue-50 px-2 py-1 text-xs text-blue-700"><FileText className="size-3 shrink-0" /><span className="truncate">{doc.filename}</span><X className="size-3 shrink-0" /></button>)}
@@ -95,7 +71,7 @@ export function ResearchComposer(props: Props) {
         </div>}
       </div>
 
-      <div className="mt-3 flex justify-end px-1">
+      <div className="mt-2 flex justify-end px-1">
         <span className="hidden shrink-0 text-[11px] text-slate-400 sm:inline">Enter 发送 · Shift + Enter 换行</span>
       </div>
     </form>

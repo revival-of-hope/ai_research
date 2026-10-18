@@ -29,23 +29,41 @@ async function sourceModule(relative) {
 }
 
 const { ResearchComposer } = await import(await sourceModule("../src/components/research/research-composer.tsx"));
+const { ResearchControls } = await import(await sourceModule("../src/components/research/research-controls.tsx"));
 const { RunActivity } = await import(await sourceModule("../src/components/research/run-activity.tsx"));
 const { MessageList } = await import(await sourceModule("../src/components/research/message-list.tsx"));
 const callbacks = Object.fromEntries(["onChange", "onToggleDocument", "onToggleWeb", "onModeChange", "onMaxAgentsChange", "onMaxDepthChange", "onSelectProvider", "onConfigureProviders", "onOpenSources", "onSubmit", "onStop"].map((name) => [name, () => {}]));
 const composer = { value: "Explain this", documents: [], providers: [], selectedDocs: [], webSearch: true, maxAgents: 3, maxDepth: 1, busy: false, ...callbacks };
 
-test("deep research settings stay expanded above the composer while quick mode has no research controls", () => {
-  const deep = renderToStaticMarkup(createElement(ResearchComposer, { ...composer, mode: "deep" }));
+test("sidebar research controls keep expanded deep settings and hide them in quick mode", () => {
+  const controls = { maxAgents: 4, maxDepth: 2, disabled: false, ...callbacks };
+  const deep = renderToStaticMarkup(createElement(ResearchControls, { ...controls, mode: "deep" }));
   assert.match(deep, /<fieldset[^>]*aria-label="深度研究设置"/);
   assert.match(deep, /aria-label="最大智能体数"/);
   assert.match(deep, /aria-label="子智能体最大派生层级"/);
-  assert.ok(deep.indexOf("深度研究设置") < deep.indexOf("<textarea"));
+  assert.match(deep, /<option value="4" selected="">4 个/);
+  assert.match(deep, /<option value="2" selected="">2 层/);
   assert.doesNotMatch(deep, /模型推理|推理强度/);
-  const quick = renderToStaticMarkup(createElement(ResearchComposer, { ...composer, mode: "quick" }));
+  const quick = renderToStaticMarkup(createElement(ResearchControls, { ...controls, mode: "quick" }));
   assert.match(quick, /由所选模型直接回答/);
   assert.match(quick, /联网搜索/);
   assert.match(quick, /资料/);
   assert.doesNotMatch(quick, /深度研究设置|最大智能体数|子智能体最大派生层级|模型推理|推理强度/);
+  for (const mode of ["deep", "quick"]) {
+    const input = renderToStaticMarkup(createElement(ResearchComposer, { ...composer, mode }));
+    assert.doesNotMatch(input, /回答模式|深度研究设置|最大智能体数|子智能体最大派生层级/);
+    assert.match(input, /<textarea/);
+    assert.match(input, /联网搜索/);
+    assert.match(input, /资料/);
+  }
+});
+
+test("sidebar mode and collaboration controls lock while the workspace is unavailable", () => {
+  const locked = renderToStaticMarkup(createElement(ResearchControls, { mode: "deep", maxAgents: 3, maxDepth: 1, disabled: true, ...callbacks }));
+  assert.equal((locked.match(/<button[^>]*disabled=""/g) || []).length, 2);
+  assert.match(locked, /<fieldset disabled="" aria-label="深度研究设置"/);
+  assert.equal((locked.match(/aria-pressed="true"/g) || []).length, 1);
+  assert.equal((locked.match(/aria-pressed="false"/g) || []).length, 1);
 });
 
 test("quick replies never render research cards even with historical research events", () => {

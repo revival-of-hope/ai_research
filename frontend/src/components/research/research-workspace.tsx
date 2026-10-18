@@ -47,24 +47,24 @@ export function ResearchWorkspace(props: Props) {
   return <main className="relative flex min-w-0 flex-1 flex-col bg-white">
     <header className="flex h-16 shrink-0 items-center gap-3 border-b border-slate-100 px-4 sm:px-7">
       <button onClick={props.onOpenMenu} aria-label="打开导航和历史记录" className="-ml-1 rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"><Menu className="size-5" /></button>
-      <div className="flex min-w-0 items-center gap-2 text-xs"><span className="hidden text-slate-400 sm:inline">工作区</span><ChevronRight className="hidden size-3 text-slate-300 sm:inline" /><h1 className="truncate font-medium text-slate-700">{props.title || "新的研究"}</h1><span className="hidden shrink-0 rounded-md border border-slate-100 px-1.5 py-0.5 text-[10px] text-slate-400 md:inline">{props.mode === "deep" ? "深度研究" : "快速问答"}</span></div>
+      <div className="flex min-w-0 items-center gap-2 text-xs"><span className="hidden text-slate-400 sm:inline">工作区</span><ChevronRight className="hidden size-3 text-slate-300 sm:inline" /><h1 className="truncate font-medium text-slate-700">{props.title || (props.mode === "deep" ? "新的研究" : "新的问答")}</h1><span className="hidden shrink-0 rounded-md border border-slate-100 px-1.5 py-0.5 text-[10px] text-slate-400 md:inline">{props.mode === "deep" ? "深度研究" : "快速问答"}</span></div>
       <div className="ml-auto flex shrink-0 items-center gap-1"><button onClick={props.onOpenSources} title="我的资料" aria-label="打开资料库" className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-slate-500 hover:bg-slate-50"><Database className="size-4" /><span className="hidden text-xs sm:inline">资料库</span></button><button onClick={props.onOpenProviders} title="模型设置" aria-label="打开模型设置" className="rounded-lg p-2 text-slate-500 hover:bg-slate-50"><Settings2 className="size-4" /></button></div>
     </header>
 
-    {props.historyLoading ? <div role="status" className="grid min-h-0 flex-1 place-items-center"><div className="flex items-center gap-2 text-sm text-slate-400"><LoaderCircle className="size-4 animate-spin" />正在读取研究记录…</div></div> : empty ? <div className="min-h-0 flex-1 overflow-y-auto px-4 py-8 sm:px-8 sm:py-14">
+    {props.historyLoading ? <div role="status" className="grid min-h-0 flex-1 place-items-center"><div className="flex items-center gap-2 text-sm text-slate-400"><LoaderCircle className="size-4 animate-spin" />正在读取对话记录…</div></div> : empty ? <div className="min-h-0 flex-1 overflow-y-auto px-4 py-8 sm:px-8 sm:py-14">
       <div className="mx-auto flex min-h-full w-full max-w-[920px] flex-col justify-center pb-2 lg:pb-12">
-        <div className="mb-8 text-center sm:mb-10"><div className="mb-5 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50/60 px-3 py-1.5 text-[11px] font-medium text-blue-600"><Sparkles className="size-3" />你的研究工作台</div><h2 className="text-[27px] font-semibold tracking-tight text-slate-900 sm:text-[34px]">把好问题，研究透。</h2><p className="mt-3 text-sm leading-6 text-slate-400">让智能体协作探索，从联网信息和你的资料中整理有据可依的答案。</p></div>
+        <div className="mb-8 text-center sm:mb-10"><div className="mb-5 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50/60 px-3 py-1.5 text-[11px] font-medium text-blue-600"><Sparkles className="size-3" />{props.mode === "deep" ? "你的研究工作台" : "快速问答"}</div><h2 className="text-[27px] font-semibold tracking-tight text-slate-900 sm:text-[34px]">{props.mode === "deep" ? "把好问题，研究透。" : "有问题，直接聊。"}</h2><p className="mt-3 text-sm leading-6 text-slate-400">{props.mode === "deep" ? "让智能体协作探索，从联网信息和你的资料中整理有据可依的答案。" : "由你选择的模型直接回答，按需结合联网搜索与资料。"}</p></div>
         {props.composer}
         {props.loading && <p role="status" className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-400"><LoaderCircle className="size-3 animate-spin" />正在载入模型和资料…</p>}
         {props.error && <div className="mt-5">{error}</div>}
-        <div className="mt-9 grid gap-3 sm:grid-cols-3">
+        {props.mode === "deep" && <div className="mt-9 grid gap-3 sm:grid-cols-3">
           {suggestions.map(({ title, detail, prompt, icon: Icon }) => <button key={title} disabled={props.loading} onClick={() => props.onSuggestion(prompt)} className="group rounded-2xl border border-slate-200/80 bg-white p-4 text-left transition hover:border-blue-200 hover:bg-blue-50/20 disabled:opacity-50"><div className="flex items-center justify-between"><span className="grid size-8 place-items-center rounded-xl bg-slate-50 text-slate-500 transition group-hover:bg-blue-50 group-hover:text-blue-600"><Icon className="size-4" /></span><ArrowUpRight className="size-3.5 text-slate-300 group-hover:text-blue-500" /></div><p className="mt-3 text-xs font-semibold text-slate-700">{title}</p><p className="mt-1.5 text-[11px] leading-5 text-slate-400">{detail}</p></button>)}
-        </div>
-        <p className="mt-7 text-center text-[10px] tracking-wide text-slate-300">清晰计划<span className="px-2.5">·</span>智能体协作<span className="px-2.5">·</span>逐条来源引用</p>
+        </div>}
+        {props.mode === "deep" && <p className="mt-7 text-center text-[10px] tracking-wide text-slate-300">清晰计划<span className="px-2.5">·</span>智能体协作<span className="px-2.5">·</span>逐条来源引用</p>}
       </div>
     </div> : <>
       <div ref={scroll} onScroll={() => { const node = scroll.current; if (!node) return; const near = node.scrollHeight - node.scrollTop - node.clientHeight < 100; autoFollow.current = near; setAtBottom(near); }} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <Suspense fallback={<p role="status" className="p-10 text-center text-xs text-slate-400">正在准备报告视图…</p>}><MessageList messages={props.messages} busy={props.busy} onEditQuestion={props.onEditQuestion} /></Suspense>
+        <Suspense fallback={<p role="status" className="p-10 text-center text-xs text-slate-400">正在准备对话视图…</p>}><MessageList messages={props.messages} busy={props.busy} onEditQuestion={props.onEditQuestion} /></Suspense>
         {props.error && <div className="px-4 pb-7 sm:px-8">{error}</div>}
       </div>
       <div className="relative shrink-0 border-t border-slate-100 bg-white px-4 pb-4 pt-3 sm:px-8 sm:pb-5">

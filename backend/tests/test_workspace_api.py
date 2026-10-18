@@ -464,3 +464,83 @@ def test_http_research_stream_persists_report_sources_and_activity(workspace, mo
     register(client, "stranger@example.com")
     assert client.get(path).status_code == 404
     assert client.delete(path).status_code == 404
+
+
+def test_http_quick_answer_bypasses_research_and_restores_mode(workspace, monkeypatch):
+    import json
+
+    import httpx
+
+    from app.infrastructure.agents import answer
+
+    client, _ = workspace
+    register(client)
+    preset = create_provider(client)
+    model_requests = []
+    original = httpx.AsyncClient
+
+    def respond(request):
+        payload = json.loads(request.content)
+        model_requests.append(payload)
+        assert payload["reasoning"] == {"effort": "medium"}
+        assert not payload.get("tools")
+        response = {
+            "id": "resp_1",
+            "object": "response",
+            "created_at": 1,
+            "status": "completed",
+            "model": "my-actual-model",
+            "output": [],
+            "usage": {"input_tokens": 5, "output_tokens": 2, "total_tokens": 7},
+        }
+        events = [
+            {
+                "type": "response.output_text.delta",
+                "delta": "你好！",
+                "item_id": "msg_1",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 1,
+            },
+            {"type": "response.completed", "response": response, "sequence_number": 2},
+        ]
+        wire = "".join(f"data: {json.dumps(event, ensure_ascii=False)}\n\n" for event in events)
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, text=wire)
+
+    class MockClient(original):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs, transport=httpx.MockTransport(respond))
+
+    def forbidden_research(_):
+        pytest.fail("Quick chat must not construct the research runner")
+
+    monkeypatch.setattr(answer.httpx, "AsyncClient", MockClient)
+    monkeypatch.setattr("app.api.research.PydanticResearchRunner", forbidden_research)
+    result = client.post(
+        "/api/research/ask/stream",
+        json={
+            "question": "你好",
+            "provider_id": preset["id"],
+            "mode": "quick",
+            "web_search": False,
+            "deep_thinking": False,
+            "reasoning_effort": "low",  # Legacy fields cannot override medium.
+        },
+    )
+    assert result.status_code == 200
+    frames = [frame.splitlines() for frame in result.text.split("\n\n") if frame.strip()]
+    events = [
+        (lines[0].removeprefix("event: "), json.loads(lines[1].removeprefix("data: ")))
+        for lines in frames
+    ]
+    assert [name for name, _ in events] == ["meta", "content", "done"]
+    done = events[-1][1]
+    assert done["mode"] == "quick" and done["usage"]["agents"] == 0
+    assert len(model_requests) == done["usage"]["requests"] == 1
+    path = f"/api/research/conversations/{done['conversation_id']}"
+    history = client.get(path).json()
+    assert history[-1]["content"] == "你好！"
+    assert all(message["mode"] == "quick" for message in history)
+    run = client.get(path + "/runs").json()[0]
+    assert run["mode"] == "quick" and run["status"] == "completed"
+    assert not any(event["type"] in ("plan", "agent", "progress") for event in run["events"])

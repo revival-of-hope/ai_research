@@ -1,8 +1,10 @@
 import { Check, ChevronDown, Circle, CircleAlert, GitBranch, ListChecks, LoaderCircle, Search, Square } from "lucide-react";
 
 import type { Message, PlanStep, ResearchAgent } from "@/lib/types";
+import { isDeepResearch } from "@/lib/message-mode";
 
 export function RunActivity({ message, active }: { message: Message; active: boolean }) {
+  if (!isDeepResearch(message)) return null;
   const events = message.events ?? [];
   const planEvent = [...events].reverse().find((event) => event.type === "plan");
   const steps = (Array.isArray(planEvent?.data.steps) ? planEvent.data.steps : []) as PlanStep[];

@@ -59,7 +59,17 @@ class SqlResearchRepository:
             .order_by(Message.created_at, Message.id)
         ).all()
         # Return snapshots: no lazy ORM objects can outlive the short transaction.
-        return [row.model_dump() | {"thinking": None} for row in rows]
+        run_modes = dict(
+            self.session.exec(
+                select(ResearchRun.id, ResearchRun.mode).where(
+                    ResearchRun.conversation_id == conversation_id, ResearchRun.user_id == user_id
+                )
+            ).all()
+        )
+        return [
+            row.model_dump() | {"thinking": None, "mode": run_modes.get(row.run_id, "deep")}
+            for row in rows
+        ]
 
     def runs(self, user_id: int, conversation_id: int) -> list[dict]:
         self._owned(user_id, conversation_id)

@@ -36,7 +36,7 @@ from app.domain.research import (
 )
 from app.infrastructure.agents.errors import provider_error_message
 from app.infrastructure.agents.settings import responses_settings
-from app.infrastructure.search.web import WebSearchError, web_search
+from app.infrastructure.search.web import WebSearchError, make_web_search
 
 
 class PlanStep(BaseModel):
@@ -133,7 +133,7 @@ class PydanticResearchRunner:
         prepared: PreparedResearch,
         *,
         models: dict[str, Model] | None = None,
-        search: Callable[[str, int], Awaitable[list[dict[str, str]]]] = web_search,
+        search: Callable[[str, int], Awaitable[list[dict[str, str]]]] | None = None,
         limits: ResearchLimits | None = None,
     ):
         self.prepared = prepared
@@ -188,14 +188,7 @@ class PydanticResearchRunner:
             models = self._models
         settings: dict[str, Any] = {"max_tokens": 6_000, "timeout": 90}
         if self._models is None:
-            settings.update(
-                responses_settings(
-                    self.prepared.provider.base_url,
-                    self.prepared.provider.provider_type,
-                    deep_thinking=self.prepared.command.deep_thinking,
-                    effort=self.prepared.command.reasoning_effort,
-                )
-            )
+            settings.update(responses_settings())
         for name, output, instructions in (
             (
                 "supervisor",
@@ -248,7 +241,7 @@ class PydanticResearchRunner:
 
         @self._agents["researcher"].tool
         async def search_web(ctx: RunContext[ResearcherDeps], query: str) -> list[dict]:
-            """Search DDGS for focused evidence; returns registered citation labels and snippets."""
+            """Search the provider for evidence; returns citation labels and attributed excerpts."""
             self.budget.reserve_tool()
             if not self.prepared.command.web_search:
                 return [{"status": "disabled", "message": "用户未开启联网搜索，使用本地证据。"}]
@@ -298,6 +291,15 @@ class PydanticResearchRunner:
             "tool_calls": self.budget.tool_calls,
         }
 
+    def _record_search_usage(self, usage: dict[str, int]) -> None:
+        self.usage.input_tokens += usage.get("input_tokens", 0)
+        self.usage.output_tokens += usage.get("output_tokens", 0)
+
+    def _reserve_search_request(self) -> None:
+        if self.usage.input_tokens + self.usage.output_tokens >= self.limits.total_tokens:
+            raise BudgetExceeded("已达到本次研究的 token 预算")
+        self.budget.reserve_request()
+
     async def _emit(self, event_type: str, data: dict) -> None:
         event = ResearchEvent(event_type, data)
         if event_type != "content" and len(self.result.events) < 500:
@@ -334,8 +336,13 @@ class PydanticResearchRunner:
     async def _search_evidence(self, query: str, agent_id: str) -> list[dict]:
         await self._emit("search", {"status": "started", "query": query, "agent_id": agent_id})
         try:
-            async with self.search_semaphore, asyncio.timeout(20):
-                raw = await self._search(query, 5)
+            async with self.search_semaphore, self.semaphore, asyncio.timeout(35):
+                search = self._search or make_web_search(
+                    self.prepared.provider,
+                    on_model_request=self._reserve_search_request,
+                    on_usage=self._record_search_usage,
+                )
+                raw = await search(query, 5)
         except WebSearchError as error:
             await self._emit(
                 "search",
@@ -417,7 +424,7 @@ class PydanticResearchRunner:
             "plan", {"steps": [{"id": agent_id, "title": step.title} for agent_id, step in tasks]}
         )
         if command.web_search:
-            # At least one real DDGS search is guaranteed when the user opts in.
+            # The initial provider search is explicit, shared, and charged to the search budget.
             self.budget.reserve_search()
             await self._search_evidence(command.question[:500], "supervisor")
         await self._emit(

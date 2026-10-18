@@ -19,14 +19,14 @@ from app.infrastructure.agents.research import ResearchPlan
 from app.infrastructure.agents.settings import responses_settings
 
 
-def test_deepseek_responses_disables_default_thinking_and_returns_structured_plan():
+def test_responses_uses_medium_thinking_and_returns_structured_plan():
     requests = []
 
     def respond(request):
         payload = json.loads(request.content)
         requests.append(payload)
         assert request.url.path == "/responses"
-        assert payload["reasoning"]["effort"] == "none"
+        assert payload["reasoning"]["effort"] == "medium"
         assert payload["store"] is False
         return httpx.Response(
             200,
@@ -63,23 +63,14 @@ def test_deepseek_responses_disables_default_thinking_and_returns_structured_pla
                     "deepseek-flash", provider=OpenAIProvider(openai_client=client)
                 ),
                 output_type=ResearchPlan,
-                model_settings=responses_settings("https://api.deepseek.com", "deepseek"),
+                model_settings=responses_settings(),
             )
             result = await agent.run("制定研究计划")
             assert result.output.steps[0].title == "查证"
 
     asyncio.run(scenario())
     assert len(requests) == 1
-    assert (
-        responses_settings("https://api.deepseek.com", "custom")["openai_reasoning_effort"]
-        == "none"
-    )
-    assert (
-        responses_settings("https://api.deepseek.com", "deepseek", deep_thinking=True)[
-            "openai_reasoning_effort"
-        ]
-        == "medium"
-    )
+    assert responses_settings()["openai_reasoning_effort"] == "medium"
 
 
 @pytest.mark.parametrize("status", [400, 401, 402, 403, 404, 429, 500])

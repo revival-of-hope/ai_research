@@ -41,20 +41,23 @@ docker compose up --build -d
 
 Base URL 填 API 根路径，不包含 `/responses`、`/models` 等具体接口。推荐列表不代表账户已获授权；Models API 列表也不保证工具能力。研究需要模型支持函数工具与结构化输出。读取列表失败时保留推荐项并允许手填。Claude 原生 Messages 地址不能直接用于本项目。
 
-API key 在服务端使用 Fernet 加密，已保存密钥不会回显。DeepSeek 关闭模型推理时显式发送 `reasoning.effort=none`，开启时发送所选强度。详细资料与报错排查见 [提供方配置](docs/providers.md)。
+API key 在服务端使用 Fernet 加密，已保存密钥不会回显。快速问答与深度研究都默认发送 `reasoning.effort=medium`，无需勾选模型推理或选择强度。详细资料与报错排查见 [提供方配置](docs/providers.md)。
 
 编辑预设时，地址不变可留空密钥继续使用；更改地址后需要重新输入对应密钥，避免把旧密钥发送给另一家服务商。
 
 ## 工作台能力
 
 - 邮箱密码账户、HttpOnly cookie、用户数据隔离与管理员管理。
-- 快速 / 深度研究，主管计划、并行研究者、受预算约束的子任务派生、证据审阅与流式报告。
-- ddgs 联网搜索及明确开关；来源显示搜索摘要和链接，不声称读取了网页全文。
+- 快速问答直接发送一次 Responses 模型请求，不创建研究计划或多智能体；保留历史、资料、搜索、停止与用量。
+- 深度研究使用主管计划、并行研究者、受预算约束的子任务派生、证据审阅与流式报告。协作规模和层级设置固定展开在深度研究栏。
+- 联网搜索使用 DeepSeek 官方 Search 或 OpenAI Responses 原生 web_search，不再依赖第三方匿名搜索引擎。保留搜索开关与来源引用；模型生成的搜索摘要明确标识，不当作网页原文。
 - TXT、Markdown、CSV、DOCX、文本 PDF 上传和中英文词法检索；只读取本人明确选择且处理完成的资料。暂不支持 OCR、扫描件、图片和 XLSX。
 - 会话、每轮来源、公开活动、状态与已报告 token 用量持久化；支持停止、编辑重试、历史搜索、重命名和 Markdown 导出。
 - 不展示或持久保存模型的私密思考过程；失败与取消不会伪装成成功报告。
 
 运行与当前 SSE 请求绑定，离开页面或连接断开会取消；暂不支持进程崩溃后的自动续跑。用量来自上游已返回的 usage，不等同服务商账单；并发在途请求可能越过 token 预算阈值。
+
+DeepSeek Search 按独立搜索请求计费，适用于 `deepseek-flash`；OpenAI 深度研究的独立搜索会额外调用一次模型，已纳入请求和 token 预算。快速问答的 OpenAI 搜索随同一次 Responses 调用执行。只有开启联网时才启用搜索；未接入官方搜索的提供方可关闭联网使用。[官方搜索契约与限制](docs/search.md)
 
 ## 本地开发
 
@@ -97,7 +100,7 @@ npm run build
 
 [GitHub Actions CI](.github/workflows/ci.yml) 在 push / pull request 时运行后端检查、测试与前端构建。后端 job 使用 PostgreSQL 17 独立空库验证旧版数据升级、降级和再次升级。本地设置 `TEST_POSTGRES_URL` 可执行同样的迁移测试；未设置时有一项 skip。该测试拒绝非空库，**不要指向业务数据库**。
 
-当前本地验证结果、浏览器检查与真实模型验证边界见 [验证记录](docs/verification.md)。
+当前本地验证结果、浏览器检查与真实模型验证边界见 [2026-10-18 验证记录](docs/verification-2026-10-18.md)；此前版本记录保留在 [2026-10-15 验证记录](docs/verification.md)。
 
 ## 升级与生产配置
 

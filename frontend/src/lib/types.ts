@@ -66,6 +66,7 @@ export type Message = {
   id?: number;
   role: "user" | "assistant";
   content: string;
+  mode?: ResearchMode;
   thinking?: string | null;
   provider_id?: number | null;
   provider_name?: string | null;
@@ -118,7 +119,5 @@ export type ResearchReply = {
   usage: TokenUsage;
   sources: ResearchSource[];
 };
-
-export type ReasoningEffort = "low" | "medium" | "high";
 
 export type AdminUser = User & { total_tokens: number };

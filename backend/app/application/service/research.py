@@ -104,6 +104,7 @@ class ResearchService:
                 "conversation_id": prepared.conversation_id,
                 "provider_id": prepared.provider.id,
                 "run_id": prepared.run_id,
+                "mode": prepared.command.mode,
             },
         )
         runner.result.events.append({"type": meta.type, "data": meta.data})
@@ -120,6 +121,7 @@ class ResearchService:
                     "conversation_id": prepared.conversation_id,
                     "provider_id": prepared.provider.id,
                     "run_id": prepared.run_id,
+                    "mode": prepared.command.mode,
                     "saved": True,
                     "sources": runner.result.sources,
                     "usage": runner.result.usage,

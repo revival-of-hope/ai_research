@@ -15,6 +15,7 @@ from app.domain.research import (
     ProviderNotConfigured,
     ResearchCommand,
 )
+from app.infrastructure.agents.answer import DirectAnswerRunner
 from app.infrastructure.agents.research import PydanticResearchRunner
 from app.infrastructure.uow.research import SqlResearchUnitOfWork
 from app.schemas.research import (
@@ -32,7 +33,11 @@ def research_service(session: Session) -> ResearchService:
     bind = session.get_bind()
     return ResearchService(
         lambda: SqlResearchUnitOfWork(Session(bind), owns_session=True),
-        PydanticResearchRunner,
+        lambda prepared: (
+            DirectAnswerRunner(prepared)
+            if prepared.command.mode == "quick"
+            else PydanticResearchRunner(prepared)
+        ),
     )
 
 

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { runResearchStream } from "@/lib/research-stream";
 import { restoreResearchHistory } from "@/lib/research-history";
-import type { Conversation, Message, Provider, ReasoningEffort, ResearchMode, ResearchRun, SourceDocument } from "@/lib/types";
+import type { Conversation, Message, Provider, ResearchMode, ResearchRun, SourceDocument } from "@/lib/types";
 
 export function useResearch(userId?: number) {
   const [documents, setDocuments] = useState<SourceDocument[]>([]);
@@ -15,8 +15,6 @@ export function useResearch(userId?: number) {
   const [selectedDocs, setSelectedDocs] = useState<number[]>([]);
   const [webSearch, setWebSearch] = useState(true);
   const [mode, setMode] = useState<ResearchMode>("deep");
-  const [deepThinking, setDeepThinking] = useState(false);
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("medium");
   const [maxAgents, setMaxAgents] = useState(3);
   const [maxDepth, setMaxDepth] = useState(1);
   const [question, setQuestion] = useState("");
@@ -75,7 +73,10 @@ export function useResearch(userId?: number) {
       ]);
       if (version !== historyVersion.current) return;
       setConversationId(id);
-      setMessages(restoreResearchHistory(history, runs));
+      const restored = restoreResearchHistory(history, runs);
+      setMessages(restored);
+      const lastMode = [...restored].reverse().find((message) => message.mode)?.mode;
+      if (lastMode) setMode(lastMode);
       setQuestion("");
       setLastQuestion([...history].reverse().find((message) => message.role === "user")?.content || "");
     } catch (reason) {
@@ -131,8 +132,8 @@ export function useResearch(userId?: number) {
     setLastQuestion(content);
     setQuestion("");
     setMessages((items) => [...items,
-      { role: "user", content },
-      { id: assistantId, role: "assistant", content: "", sources: [], events: [], status: "running", provider_id: provider?.id, provider_name: provider?.name, model: provider?.model },
+      { role: "user", content, mode },
+      { id: assistantId, role: "assistant", content: "", mode, sources: [], events: [], status: "running", provider_id: provider?.id, provider_name: provider?.name, model: provider?.model },
     ]);
     try {
       await runResearchStream({
@@ -141,13 +142,13 @@ export function useResearch(userId?: number) {
         conversation_id: conversationId ?? null,
         document_ids: selectedDocs,
         web_search: webSearch,
-        deep_thinking: deepThinking,
-        reasoning_effort: reasoningEffort,
         mode,
-        max_agents: maxAgents,
-        max_depth: maxDepth,
+        ...(mode === "deep" ? { max_agents: maxAgents, max_depth: maxDepth } : {}),
       }, {
-        onMeta: setConversationId,
+        onMeta: (id, responseMode) => {
+          setConversationId(id);
+          if (responseMode) updateAssistant((current) => ({ ...current, mode: responseMode }));
+        },
         onDelta: (delta) => updateAssistant((current) => ({ ...current, content: current.content + delta })),
         onEvent: (event) => updateAssistant((current) => {
           const sources = [...(current.sources ?? [])];
@@ -161,8 +162,8 @@ export function useResearch(userId?: number) {
         onDone: (completion) => {
           finalReceived = true;
           setConversationId(completion.conversation_id);
-          updateAssistant((current) => ({ ...current, total_tokens: completion.usage.total_tokens, usage: completion.usage, sources: completion.sources, run_id: completion.run_id, status: completion.saved ? "completed" : "failed" }));
-          if (!completion.saved) setError("报告已生成，但保存失败。请先复制或导出报告，再重新加载对话。");
+          updateAssistant((current) => ({ ...current, mode: completion.mode ?? current.mode, total_tokens: completion.usage.total_tokens, usage: completion.usage, sources: completion.sources, run_id: completion.run_id, status: completion.saved ? "completed" : "failed" }));
+          if (!completion.saved) setError("回答已生成，但保存失败。请先复制或导出内容，再重新加载对话。");
         },
       }, abort.signal);
     } catch (reason) {
@@ -171,7 +172,7 @@ export function useResearch(userId?: number) {
       } else if (abort.signal.aborted) {
         updateAssistant((current) => ({ ...current, status: "cancelled" }));
       } else {
-        const message = reason instanceof Error ? reason.message : "研究请求失败";
+        const message = reason instanceof Error ? reason.message : "回答请求失败";
         updateAssistant((current) => ({ ...current, status: "failed", error: message }));
         setError(message);
       }
@@ -188,9 +189,9 @@ export function useResearch(userId?: number) {
 
   return {
     documents, providers, selectedProviderId, conversations, conversationId, messages,
-    selectedDocs, webSearch, mode, deepThinking, reasoningEffort, maxAgents, maxDepth, question,
+    selectedDocs, webSearch, mode, maxAgents, maxDepth, question,
     busy, loading, historyLoading, error, lastQuestion,
-    setQuestion, setMode, setWebSearch, setDeepThinking, setReasoningEffort, setMaxAgents, setMaxDepth,
+    setQuestion, setMode, setWebSearch, setMaxAgents, setMaxDepth,
     toggleDocument: (id: number) => {
       if (selectedDocs.includes(id)) setSelectedDocs((current) => current.filter((item) => item !== id));
       else if (selectedDocs.length >= 30) setError("单次研究最多选择 30 份资料。");

@@ -10,8 +10,6 @@ class ResearchRequest(BaseModel):
     conversation_id: int | None = None
     document_ids: list[int] = Field(default_factory=list, max_length=30)
     web_search: bool = False
-    deep_thinking: bool = False
-    reasoning_effort: Literal["low", "medium", "high"] = "medium"
     mode: Literal["quick", "deep"] = "deep"
     max_agents: int = Field(default=3, ge=1, le=6)
     max_depth: int = Field(default=1, ge=0, le=2)
@@ -52,6 +50,7 @@ class MessagePublic(BaseModel):
     usage: dict = Field(default_factory=dict)
     run_id: str | None = None
     status: str = "completed"
+    mode: Literal["quick", "deep"] = "deep"
     created_at: datetime
 
 

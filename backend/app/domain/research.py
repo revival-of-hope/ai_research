@@ -32,8 +32,6 @@ class ResearchCommand:
     conversation_id: int | None = None
     document_ids: tuple[int, ...] = ()
     web_search: bool = False
-    deep_thinking: bool = False
-    reasoning_effort: str = "medium"
     mode: Literal["quick", "deep"] = "deep"
     max_agents: int = 3
     max_depth: int = 1
@@ -62,14 +60,14 @@ class ResearchLimits:
     @classmethod
     def for_command(cls, command: ResearchCommand) -> "ResearchLimits":
         quick = command.mode == "quick"
-        agents = 1 if quick else command.max_agents
+        agents = 0 if quick else command.max_agents
         return cls(
             max_agents=agents,
             max_depth=0 if quick else command.max_depth,
-            concurrency=min(3, agents),
-            requests=10 if quick else 18 + agents * 4,
-            searches=2 if quick else agents * 3,
-            tool_calls=6 if quick else agents * 6,
+            concurrency=max(1, min(3, agents)),
+            requests=1 if quick else 18 + agents * 4,
+            searches=1 if quick else agents * 3,
+            tool_calls=0 if quick else agents * 6,
             total_tokens=30_000 if quick else 120_000,
             timeout_seconds=180 if quick else 600,
         )

@@ -1,6 +1,7 @@
 """Actionable diagnostics without returning upstream bodies, prompts or API keys."""
 
 import httpx
+from openai import APIConnectionError, APIStatusError, APITimeoutError
 from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior, UsageLimitExceeded
 
 from app.domain.research import ResearchError
@@ -13,9 +14,11 @@ def provider_error_message(error: BaseException) -> str:
         return str(error)
     if isinstance(error, ModelHTTPError):
         return status_message(error.status_code)
-    if isinstance(error, (TimeoutError, httpx.TimeoutException)):
+    if isinstance(error, APIStatusError):
+        return status_message(error.status_code)
+    if isinstance(error, (TimeoutError, httpx.TimeoutException, APITimeoutError)):
         return "模型请求超时，请减少研究范围或选择快速模式后重试。"
-    if isinstance(error, httpx.HTTPError):
+    if isinstance(error, (httpx.HTTPError, APIConnectionError)):
         return "无法连接模型服务，请检查请求网址、代理和网络。"
     if isinstance(error, UsageLimitExceeded):
         return "已达到本次研究的模型调用或 token 预算，请减少研究范围后重试。"

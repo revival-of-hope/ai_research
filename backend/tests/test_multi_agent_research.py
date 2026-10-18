@@ -176,6 +176,34 @@ def test_request_budget_is_hard_and_failed_run_has_no_success_message(database):
         assert session.exec(select(Message).where(Message.role == "assistant")).first() is None
 
 
+def test_official_search_model_requests_and_tokens_share_research_budget(database, monkeypatch):
+    def factory(provider, *, on_model_request, on_usage):
+        async def official_search(query, limit):
+            on_model_request()
+            on_usage({"input_tokens": 170, "output_tokens": 30, "total_tokens": 200})
+            return await search(query, limit)
+
+        return official_search
+
+    monkeypatch.setattr("app.infrastructure.agents.research.make_web_search", factory)
+    command = ResearchCommand("Research the evidence", web_search=True)
+    limits = replace(ResearchLimits.for_command(command), requests=4)
+    engine, user_id, *_ = database
+    workspace = ResearchService(
+        lambda: SqlResearchUnitOfWork(Session(engine), owns_session=True),
+        lambda prepared: PydanticResearchRunner(prepared, models=models(), limits=limits),
+    )
+    prepared = workspace.prepare(user_id, command)
+    events = asyncio.run(collect(workspace, prepared))
+    assert events[-1].type == "error" and "预算" in events[-1].data["message"]
+    with Session(engine) as session:
+        run = session.get(ResearchRun, prepared.run_id)
+        assert run.usage["requests"] == 4  # Search consumes one of the four model reservations.
+        assert run.usage["input_tokens"] >= 170 and run.usage["output_tokens"] >= 30
+        assert run.usage["searches"] == 1
+        assert run.status == "failed"
+
+
 def test_upstream_exception_body_is_never_exposed_or_persisted(database):
     def broken_model(messages, info):
         raise RuntimeError("provider body: API_KEY=do-not-expose and private prompt")
@@ -353,9 +381,8 @@ def test_quick_mode_and_domain_limits_are_deterministic():
     from app.domain.research import ResearchBudget
 
     limits = ResearchLimits.for_command(ResearchCommand("Research evidence", mode="quick"))
-    assert limits.max_agents == 1 and limits.max_depth == 0
+    assert limits.max_agents == 0 and limits.max_depth == 0 and limits.requests == 1
     budget = ResearchBudget(limits)
-    assert budget.reserve_agent(0) == 1
     with pytest.raises(BudgetExceeded):
         budget.reserve_agent(0)
     with pytest.raises(BudgetExceeded):

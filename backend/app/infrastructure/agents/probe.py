@@ -13,7 +13,6 @@ from app.core.crypto import decrypt_secret
 from app.core.endpoints import validate_provider_url
 from app.domain.workspace import ModelPreset
 from app.infrastructure.agents.errors import provider_error_message
-from app.infrastructure.agents.settings import responses_settings
 
 
 async def probe_provider(preset: ModelPreset):
@@ -33,10 +32,9 @@ async def probe_provider(preset: ModelPreset):
                 name="provider_connection_test",
                 model_settings={
                     "max_tokens": 256,
-                    **responses_settings(
-                        preset.base_url,
-                        preset.provider_type,
-                    ),
+                    # The diagnostic probe needs visible text within a tiny budget.
+                    "openai_reasoning_effort": "none",
+                    "openai_store": False,
                 },
             )
             async with asyncio.timeout(45):

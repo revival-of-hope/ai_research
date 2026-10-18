@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { RunActivity } from "@/components/research/run-activity";
+import { isDeepResearch } from "@/lib/message-mode";
 import type { Message, ResearchSource } from "@/lib/types";
 
 function httpUrl(value?: string | null) {
@@ -33,6 +34,9 @@ function AssistantMessage({ message, index, active, busy, onRetry }: { message: 
   const report = useRef<HTMLDivElement>(null);
   const [headings, setHeadings] = useState<{ id: string; title: string; level: string }[]>([]);
   const sources = message.sources ?? [];
+  const deep = isDeepResearch(message);
+  const searchEvent = [...(message.events ?? [])].reverse().find((event) => event.type === "search");
+  const searching = active && ["searching", "started"].includes(String(searchEvent?.data.status));
   const prefix = `sources-${index}`;
   useEffect(() => {
     const next = [...(report.current?.querySelectorAll<HTMLHeadingElement>("h1,h2,h3") ?? [])].map((heading, headingIndex) => {
@@ -52,25 +56,25 @@ function AssistantMessage({ message, index, active, busy, onRetry }: { message: 
     const url = URL.createObjectURL(new Blob([exportText], { type: "text/markdown;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `research-${new Date().toISOString().slice(0, 10)}-${index + 1}.md`;
+    anchor.download = `${deep ? "research" : "answer"}-${new Date().toISOString().slice(0, 10)}-${index + 1}.md`;
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  return <article className="flex gap-3 sm:gap-4" aria-label="研究回答">
+  return <article className="flex gap-3 sm:gap-4" aria-label={deep ? "研究回答" : "模型回答"}>
     <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-xl bg-blue-600 text-white sm:size-8"><Sparkles className="size-3.5 sm:size-4" /></span>
     <div className="min-w-0 flex-1">
       <div className="mb-3 flex items-center gap-2"><span className="text-xs font-semibold text-slate-700">Research AI</span>{message.model && <span className="truncate text-[10px] text-slate-400">{message.provider_name || message.model}</span>}</div>
-      <RunActivity message={message} active={active} />
+      {deep ? <RunActivity message={message} active={active} /> : searching && <p role="status" className="mb-3 text-xs text-blue-600">正在使用服务商联网搜索…</p>}
       {headings.length >= 4 && <details className="mb-4 rounded-xl border border-slate-100 px-3 py-2"><summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-slate-500"><List className="size-3.5" />报告目录<span className="ml-auto text-[10px] text-slate-400">{headings.length} 个章节</span></summary><nav aria-label="报告目录" className="mt-2 max-h-48 space-y-1 overflow-y-auto border-t border-slate-100 pt-2">{headings.map((heading) => <a key={heading.id} href={`#${heading.id}`} className={"block py-1 text-xs leading-5 text-slate-500 hover:text-blue-600 " + (heading.level === "H3" ? "pl-4" : "")}>{heading.title}</a>)}</nav></details>}
-      {message.thinking && <details className="mb-4 rounded-xl border border-slate-100 px-3 py-2 text-xs text-slate-400"><summary className="cursor-pointer">历史版本的思考记录</summary><p className="mt-2 whitespace-pre-wrap leading-6">{message.thinking}</p></details>}
+      {deep && message.thinking && <details className="mb-4 rounded-xl border border-slate-100 px-3 py-2 text-xs text-slate-400"><summary className="cursor-pointer">历史版本的思考记录</summary><p className="mt-2 whitespace-pre-wrap leading-6">{message.thinking}</p></details>}
       {message.content ? <div ref={report} className="research-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{
         a: ({ href, children }) => href?.startsWith("#") ? <a href={href} className="citation-link">{children}</a> : <a href={httpUrl(href)} target="_blank" rel="noopener noreferrer">{children}</a>,
         table: ({ children }) => <div className="markdown-table"><table>{children}</table></div>,
-      }}>{linkCitations(message.content, sources, prefix)}</ReactMarkdown></div> : active ? <p className="text-sm text-slate-400"><span className="inline-flex gap-1"><span className="size-1 animate-pulse rounded-full bg-blue-500" /><span className="size-1 animate-pulse rounded-full bg-blue-400 [animation-delay:150ms]" /><span className="size-1 animate-pulse rounded-full bg-blue-300 [animation-delay:300ms]" /></span><span className="ml-2">正在收集资料并整理回答</span></p> : null}
-      {message.status === "cancelled" && <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-6 text-slate-500">已停止研究{message.content ? "，以上为停止前收到的内容。" : "。你可以编辑问题后重新发送。"}</p>}
-      {message.status === "failed" && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-800">这次研究未能完整完成。{message.content ? "你仍可复制或导出已有内容。" : "请检查下方错误，编辑问题后重试。"}</p>}
-      {message.status === "running" && !active && <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-6 text-slate-500">这次研究记录仍标记为运行中，当前页面未连接到该执行。可重新加载会话查看状态，或重新发起研究。</p>}
+      }}>{linkCitations(message.content, sources, prefix)}</ReactMarkdown></div> : active ? <p className="text-sm text-slate-400"><span className="inline-flex gap-1"><span className="size-1 animate-pulse rounded-full bg-blue-500" /><span className="size-1 animate-pulse rounded-full bg-blue-400 [animation-delay:150ms]" /><span className="size-1 animate-pulse rounded-full bg-blue-300 [animation-delay:300ms]" /></span><span className="ml-2">{deep ? "正在收集资料并整理回答" : "正在生成回答…"}</span></p> : null}
+      {message.status === "cancelled" && <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-6 text-slate-500">{deep ? "已停止研究" : "已停止回答"}{message.content ? "，以上为停止前收到的内容。" : "。你可以编辑问题后重新发送。"}</p>}
+      {message.status === "failed" && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-800">{deep ? "这次研究未能完整完成。" : "这次回答未能完成。"}{message.content ? "你仍可复制或导出已有内容。" : "请检查下方错误，编辑问题后重试。"}</p>}
+      {message.status === "running" && !active && <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-6 text-slate-500">这次{deep ? "研究" : "回答"}仍标记为运行中，当前页面未连接到该执行。可重新加载会话查看状态，或重新发送问题。</p>}
       {message.error && <p className="mt-2 break-words text-xs leading-6 text-amber-700">{message.error}</p>}
       {!active && ["failed", "cancelled", "running"].includes(message.status || "") && onRetry && <button disabled={busy} onClick={onRetry} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:border-blue-200 hover:text-blue-600 disabled:opacity-40"><RotateCcw className="size-3" />编辑问题后重试</button>}
       {sources.length > 0 && <section className="mt-6 border-t border-slate-100 pt-4" aria-label="本条回答的来源"><h3 className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-600"><FileText className="size-3.5" />来源<span className="font-normal text-slate-400">{sources.length}</span></h3><div className="grid gap-2 sm:grid-cols-2">{sources.map((source, sourceIndex) => {

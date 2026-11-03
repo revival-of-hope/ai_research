@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import accounts, admin, auth, documents, research
+from app.api import accounts, admin, auth, comparisons, documents, research
 from app.core.bootstrap import ensure_admin
 from app.core.config import settings
 from app.domain.workspace import (
@@ -41,7 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for route in (auth.router, accounts.router, documents.router, research.router, admin.router):
+for route in (auth.router, accounts.router, documents.router, research.router, comparisons.router, admin.router):
     app.include_router(route, prefix=settings.api_prefix)
 
 

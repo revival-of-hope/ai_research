@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import ts from "typescript";
 
 const require = createRequire(import.meta.url);
@@ -32,6 +33,12 @@ const { ResearchComposer } = await import(await sourceModule("../src/components/
 const { ResearchControls } = await import(await sourceModule("../src/components/research/research-controls.tsx"));
 const { RunActivity } = await import(await sourceModule("../src/components/research/run-activity.tsx"));
 const { MessageList } = await import(await sourceModule("../src/components/research/message-list.tsx"));
+const { ComparisonPage } = await import(await sourceModule("../src/pages/workspace/comparison.tsx"));
+const { ComparisonSourceStep } = await import(await sourceModule("../src/components/comparison-source-step.tsx"));
+const { ComparisonReview } = await import(await sourceModule("../src/components/comparison-review.tsx"));
+const { WorkspaceNavigation } = await import(await sourceModule("../src/components/shell/workspace-navigation.tsx"));
+const { WorkspaceBreadcrumb } = await import(await sourceModule("../src/components/shell/workspace-breadcrumb.tsx"));
+const { ResearchSidebar } = await import(await sourceModule("../src/components/research/research-sidebar.tsx"));
 const callbacks = Object.fromEntries(["onChange", "onToggleDocument", "onToggleWeb", "onModeChange", "onMaxAgentsChange", "onMaxDepthChange", "onSelectProvider", "onConfigureProviders", "onOpenSources", "onSubmit", "onStop"].map((name) => [name, () => {}]));
 const composer = { value: "Explain this", documents: [], providers: [], selectedDocs: [], webSearch: true, maxAgents: 3, maxDepth: 1, busy: false, ...callbacks };
 
@@ -66,6 +73,53 @@ test("sidebar mode and collaboration controls lock while the workspace is unavai
   assert.equal((locked.match(/aria-pressed="false"/g) || []).length, 1);
 });
 
+test("both workspaces use matching research and comparison navigation actions", () => {
+  for (const pathname of ["/research", "/comparison"]) {
+    const html = renderToStaticMarkup(createElement(MemoryRouter, { initialEntries: [pathname] },
+      createElement(WorkspaceNavigation, { isAdmin: true })));
+    assert.equal((html.match(/aria-label="工作区功能导航"/g) || []).length, 1);
+    assert.equal((html.match(/aria-label="工作区常用功能"/g) || []).length, 1);
+    assert.match(html, /href="\/research"[^>]*>.*?新建研究/);
+    assert.match(html, /href="\/comparison"[^>]*>.*?实验结果对照/);
+    for (const [path, label] of [
+      ["/sources", "资料库"],
+      ["/settings", "模型预设"],
+      ["/usage", "Token 用量"],
+      ["/guide", "使用说明"],
+      ["/admin", "用户管理"],
+    ]) {
+      assert.match(html, new RegExp(`href="${path}"[^>]*>.*?${label}`));
+    }
+    assert.equal((html.match(/h-11 w-full items-center/g) || []).length, 2);
+  }
+});
+
+test("shared breadcrumb keeps page hierarchy without duplicating page headers", () => {
+  for (const page of ["研究问答", "实验结果对照", "Token 用量"]) {
+    const html = renderToStaticMarkup(createElement(MemoryRouter, null,
+      createElement(WorkspaceBreadcrumb, { current: page })));
+    assert.equal((html.match(/aria-label="面包屑"/g) || []).length, 1);
+    assert.match(html, /工作台/);
+    assert.match(html, new RegExp(`aria-current="page"[^>]*>${page}`));
+  }
+});
+
+test("research sidebar keeps mode controls and history within common navigation", () => {
+  const callbacks = { onNew() {}, onOpen() {}, async onRename() {}, async onDelete() {},
+    onCloseMobile() {}, onOpenSettings() {}, onLogout() {}, onModeChange() {},
+    onMaxAgentsChange() {}, onMaxDepthChange() {} };
+  const props = { conversations: [], busy: false, loading: false, mobileOpen: false,
+    disabled: false, mode: "deep", maxAgents: 3, maxDepth: 1, email: "test@example.com", ...callbacks };
+  const html = renderToStaticMarkup(createElement(MemoryRouter, { initialEntries: ["/research"] },
+    createElement(ResearchSidebar, props)));
+  assert.equal((html.match(/aria-label="工作区功能导航"/g) || []).length, 1);
+  assert.match(html, /实验结果对照/);
+  assert.match(html, /回答模式/);
+  assert.match(html, /最近研究/);
+  assert.match(html, /搜索历史记录/);
+  assert.match(html, /账户菜单/);
+});
+
 test("quick replies never render research cards even with historical research events", () => {
   const message = { role: "assistant", content: "", mode: "quick", status: "running", events: [{ type: "plan", data: { steps: [{ id: "1", title: "Historical research plan" }] } }] };
   assert.equal(renderToStaticMarkup(createElement(RunActivity, { message, active: true })), "");
@@ -90,4 +144,63 @@ test("deep replies still display collaboration while quick search has a small st
   const quick = renderToStaticMarkup(createElement(MessageList, { messages: [{ role: "assistant", mode: "quick", content: "", status: "running", events: [{ type: "search", data: { status: "searching" } }] }], busy: true, onEditQuestion() {} }));
   assert.match(quick, /正在使用服务商联网搜索/);
   assert.doesNotMatch(quick, /研究进行中|研究计划|研究运行记录/);
+});
+
+test("UC08 page presents the upload and saved-results workflow", () => {
+  const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ComparisonPage)));
+  assert.match(markup, /添加论文/);
+  assert.match(markup, /本地实验结果/);
+  assert.match(markup, /上传论文/);
+  assert.match(markup, /上传实验摘要/);
+  assert.match(markup, /没有文件？直接粘贴结果/);
+  assert.doesNotMatch(markup, /<textarea/);
+  assert.match(markup, /目标指标及实验行/);
+  assert.match(markup, /已保存的对照记录/);
+  assert.match(markup, /我的资料/);
+  assert.match(markup, /发送至所选模型/);
+});
+
+test("UC08 result upload displays saved documents and an example summary", () => {
+  const doc = { id: 15, filename: "local-metrics.md", status: "ready", size_bytes: 180 };
+  const props = {
+    kind: "run", documents: [doc], selectedId: "15",
+    onSelect() {}, async onUpload() {},
+    uploading: false, disabled: false, error: "",
+  };
+  const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ComparisonSourceStep, props)));
+  assert.match(markup, /local-metrics.md/);
+  assert.match(markup, /已选择：/);
+  assert.match(markup, /type="file"/);
+  assert.match(markup, /\.csv/);
+  assert.match(markup, /没有文件？直接粘贴结果/);
+  assert.doesNotMatch(markup, /实验摘要文件名/);
+});
+
+test("UC08 evidence review presents both selected sources, a field table and original chunk access", () => {
+  const comparison = {
+    id: 8, metric: "top-1 accuracy", paper_name: "paper.pdf", run_name: "run.md",
+    paper_document_id: 1, run_document_id: 2, status: "pending",
+    fields: [
+      { key: "dataset", label: "数据集", paper: { value: "ImageNet", excerpt: "Dataset ImageNet", chunk_id: 4 },
+        run: { value: "ImageNet", excerpt: "Dataset ImageNet", chunk_id: 6 },
+        status: "aligned", review_status: "pending", note: "" },
+      { key: "split", label: "数据划分", paper: { value: "validation", excerpt: "split validation", chunk_id: 4 },
+        run: { value: "test", excerpt: "split test", chunk_id: 6 },
+        status: "mismatch", review_status: "unresolved", note: "不同划分" },
+    ],
+  };
+  const markup = renderToStaticMarkup(createElement(MemoryRouter, null,
+    createElement(ComparisonReview, { comparison, onBack() {}, onEdit() {}, onReview() {}, onConfirm() {}, busy: false })));
+  assert.match(markup, /本次使用的证据/);
+  assert.match(markup, /paper.pdf/);
+  assert.match(markup, /run.md/);
+  assert.match(markup, /实验条件与指标对照/);
+  assert.match(markup, /数据划分/);
+  assert.match(markup, /不能判定为同条件实验/);
+  assert.match(markup, /查看完整文本片段 #4/);
+  assert.match(markup, /修订引用摘录或位置/);
+  assert.match(markup, /原文摘录/);
+  assert.match(markup, /标记未解决/);
+  assert.match(markup, /确认并保存摘要/);
+  assert.match(markup, /disabled=""/);
 });

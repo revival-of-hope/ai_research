@@ -1,6 +1,7 @@
-import { ArrowDown, ArrowUpRight, BookOpen, ChartNoAxesCombined, ChevronDown, ChevronRight, Database, FileSearch, LoaderCircle, Menu, RefreshCw, Settings2, Sparkles, X } from "lucide-react";
+import { ArrowDown, ArrowUpRight, BookOpen, ChartNoAxesCombined, ChevronDown, Database, FileSearch, LoaderCircle, Menu, RefreshCw, Settings2, Sparkles, X } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { WorkspaceBreadcrumb } from "@/components/shell/workspace-breadcrumb";
 import type { Message, ResearchMode } from "@/lib/types";
 
 const MessageList = lazy(() => import("@/components/research/message-list").then((module) => ({ default: module.MessageList })));
@@ -47,9 +48,9 @@ export function ResearchWorkspace(props: Props) {
   return <main className="relative flex min-w-0 flex-1 flex-col bg-white">
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-100 px-4 sm:px-7">
       <button onClick={props.onOpenMenu} aria-label="打开导航、研究设置和历史记录" className="-ml-1 rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"><Menu className="size-5" /></button>
-      <div className="flex min-w-0 items-center gap-2 text-xs"><span className="hidden text-slate-400 sm:inline">工作区</span><ChevronRight className="hidden size-3 text-slate-300 sm:inline" /><h1 className="truncate font-medium text-slate-700">{props.title || (props.mode === "deep" ? "新的研究" : "新的问答")}</h1><span className="hidden shrink-0 rounded-md border border-slate-100 px-1.5 py-0.5 text-[10px] text-slate-400 lg:inline">{props.mode === "deep" ? "深度研究" : "快速问答"}</span></div>
+      <WorkspaceBreadcrumb current={props.title || "研究问答"} />
       <button onClick={props.onOpenMenu} aria-label="打开研究模式与设置" className="flex shrink-0 items-center gap-1 rounded-lg bg-blue-50 px-2 py-1.5 text-[10px] font-medium text-blue-700 lg:hidden">{props.mode === "deep" ? "深度研究" : "快速问答"}<ChevronDown className="size-3" /></button>
-      <div className="ml-auto flex shrink-0 items-center gap-1"><button onClick={props.onOpenSources} title="我的资料" aria-label="打开资料库" className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-slate-500 hover:bg-slate-50"><Database className="size-4" /><span className="hidden text-xs sm:inline">资料库</span></button><button onClick={props.onOpenProviders} title="模型设置" aria-label="打开模型设置" className="rounded-lg p-2 text-slate-500 hover:bg-slate-50"><Settings2 className="size-4" /></button></div>
+      <div className="ml-auto flex shrink-0 items-center gap-1 lg:hidden"><button onClick={props.onOpenSources} title="我的资料" aria-label="打开资料库" className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-slate-500 hover:bg-slate-50"><Database className="size-4" /><span className="hidden text-xs sm:inline">资料库</span></button><button onClick={props.onOpenProviders} title="模型设置" aria-label="打开模型设置" className="rounded-lg p-2 text-slate-500 hover:bg-slate-50"><Settings2 className="size-4" /></button></div>
     </header>
 
     {props.historyLoading ? <div role="status" className="grid min-h-0 flex-1 place-items-center"><div className="flex items-center gap-2 text-sm text-slate-400"><LoaderCircle className="size-4 animate-spin" />正在读取对话记录…</div></div> : empty ? <div className="min-h-0 flex-1 overflow-y-auto px-4 py-8 sm:px-8 sm:py-14">

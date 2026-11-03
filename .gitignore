@@ -12,3 +12,6 @@ data/
 .local-secrets.json*
 *.log
 .DS_Store
+
+# Local browser-automation artefacts from the Playwright CLI.
+.playwright-cli/

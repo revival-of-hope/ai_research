@@ -140,7 +140,7 @@ def test_legacy_upgrade_downgrade_and_reupgrade_preserve_data(monkeypatch):
 
             def verify_new_defaults():
                 assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-                    "0009_provider_catalog",
+                    "0010_comparison",
                 )
                 assert connection.execute(
                     "SELECT sources,events,usage,run_id,status FROM message"
@@ -148,6 +148,11 @@ def test_legacy_upgrade_downgrade_and_reupgrade_preserve_data(monkeypatch):
                 assert {"provider_name", "model", "sources", "events", "usage"} <= set(
                     columns("research_run")
                 )
+                assert {
+                    "id", "user_id", "paper_document_id", "run_document_id",
+                    "paper_name", "run_name", "provider_id", "metric", "status",
+                    "fields", "created_at",
+                } <= set(columns("comparison_record"))
                 assert connection.execute(
                     "SELECT DISTINCT provider_type FROM api_provider"
                 ).fetchall() == [("custom",)]
@@ -183,6 +188,7 @@ def test_legacy_upgrade_downgrade_and_reupgrade_preserve_data(monkeypatch):
             migrate("downgrade", "0007_responses_only")
             verify_legacy()
             assert not columns("research_run")
+            assert not columns("comparison_record")
             assert not {"sources", "events", "usage", "run_id", "status"} & set(columns("message"))
             migrate("upgrade", "head")
             verify_legacy()

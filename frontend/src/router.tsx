@@ -7,8 +7,10 @@ import { SettingsPage } from "@/pages/account/settings";
 import { LoginPage } from "@/pages/public/login";
 import { RegisterPage } from "@/pages/public/register";
 import { GuidePage } from "@/pages/workspace/guide";
+import { ComparisonPage } from "@/pages/workspace/comparison";
 import { ResearchPage } from "@/pages/workspace/research";
 import { SourcesPage } from "@/pages/workspace/sources";
+import { UsagePage } from "@/pages/workspace/usage";
 
 
 export const router = createBrowserRouter([
@@ -21,7 +23,9 @@ export const router = createBrowserRouter([
       children: [
         { index: true, element: <Navigate to="/research" replace /> },
         { path: "research", element: <ResearchPage /> },
+        { path: "comparison", element: <ComparisonPage /> },
         { path: "sources", element: <SourcesPage /> },
+        { path: "usage", element: <UsagePage /> },
         { path: "settings", element: <SettingsPage /> },
         { path: "guide", element: <GuidePage /> },
         { path: "admin", element: <AdminPage /> },

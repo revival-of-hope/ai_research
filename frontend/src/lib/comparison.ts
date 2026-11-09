@@ -30,6 +30,7 @@ export type ComparisonField = {
 
 export type Comparison = {
   id: number;
+  conversation_id: number;
   metric: string;
   paper_document_id: number;
   run_document_id: number;
@@ -42,5 +43,5 @@ export type Comparison = {
 };
 
 export type ComparisonListItem = Pick<
-  Comparison, "id" | "metric" | "paper_name" | "run_name" | "status" | "created_at"
+  Comparison, "id" | "conversation_id" | "metric" | "paper_name" | "run_name" | "status" | "created_at"
 >;

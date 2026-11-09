@@ -57,6 +57,8 @@ export type SourceDocument = {
 
 export type Conversation = {
   id: number;
+  kind?: "research" | "comparison";
+  comparison_id?: number | null;
   title: string;
   created_at: string;
   updated_at: string;

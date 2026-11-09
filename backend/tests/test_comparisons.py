@@ -11,6 +11,7 @@ from app.core.db import get_session
 from app.domain.comparison import Evidence, build_fields, field_status
 from app.main import app
 from app.models.comparison import ComparisonRecord
+from app.models.conversations import Conversation
 
 
 @pytest.fixture
@@ -156,9 +157,9 @@ def test_comparison_review_confirmation_and_tenant_isolation(client_db, monkeypa
         "paper_document_id": paper, "run_document_id": run,
         "provider_id": selected_provider, "metric": "mIoU",
     }
-    assert client.post("/api/comparisons", json={**payload, "run_document_id": paper}).status_code == 404
+    assert client.post("/api/research/comparisons", json={**payload, "run_document_id": paper}).status_code == 404
     assert not calls
-    response = client.post("/api/comparisons", json=payload)
+    response = client.post("/api/research/comparisons", json=payload)
     assert response.status_code == 201, response.text
     created = response.json()
     assert set(calls) == {
@@ -172,7 +173,7 @@ def test_comparison_review_confirmation_and_tenant_isolation(client_db, monkeypa
     assert fields["value"]["status"] == "mismatch"
     assert fields["model"]["status"] == "unknown"
     assert fields["split"]["paper"]["chunk_id"] > 0
-    assert client.patch(f"/api/comparisons/{created['id']}", json={"confirm": True}).status_code == 409
+    assert client.patch(f"/api/research/comparisons/{created['id']}", json={"confirm": True}).status_code == 409
 
     updates = []
     for field in created["fields"]:
@@ -183,12 +184,12 @@ def test_comparison_review_confirmation_and_tenant_isolation(client_db, monkeypa
             "review_status": "unresolved" if field["status"] == "unknown" else "confirmed",
             "note": "",
         })
-    saved = client.patch(f"/api/comparisons/{created['id']}", json={"updates": updates})
+    saved = client.patch(f"/api/research/comparisons/{created['id']}", json={"updates": updates})
     assert saved.status_code == 200, saved.text
-    confirmed = client.patch(f"/api/comparisons/{created['id']}", json={"confirm": True})
+    confirmed = client.patch(f"/api/research/comparisons/{created['id']}", json={"confirm": True})
     assert confirmed.status_code == 200, confirmed.text
     assert confirmed.json()["status"] == "confirmed"
-    assert client.patch(f"/api/comparisons/{created['id']}", json={"confirm": True}).status_code == 409
+    assert client.patch(f"/api/research/comparisons/{created['id']}", json={"confirm": True}).status_code == 409
 
     with Session(engine) as session:
         row = session.exec(select(ComparisonRecord)).one()
@@ -196,20 +197,20 @@ def test_comparison_review_confirmation_and_tenant_isolation(client_db, monkeypa
         assert row.fields[0]["review_status"] == "confirmed"
 
     register(client, "outsider@example.com")
-    assert client.get("/api/comparisons").json() == []
-    assert client.get(f"/api/comparisons/{created['id']}").status_code == 404
+    assert client.get("/api/research/comparisons").json() == []
+    assert client.get(f"/api/research/comparisons/{created['id']}").status_code == 404
     assert client.get(
-        f"/api/comparisons/{created['id']}/source-chunks/paper",
+        f"/api/research/comparisons/{created['id']}/source-chunks/paper",
     ).status_code == 404
-    assert client.patch(f"/api/comparisons/{created['id']}", json={"confirm": True}).status_code == 404
-    assert client.post("/api/comparisons", json=payload).status_code == 404
+    assert client.patch(f"/api/research/comparisons/{created['id']}", json={"confirm": True}).status_code == 404
+    assert client.post("/api/research/comparisons", json=payload).status_code == 404
     assert len(calls) == 2
 
     client.post("/api/auth/login", json={
         "email": "researcher@example.com", "password": "passphrase-123",
     })
-    assert client.get(f"/api/comparisons/{created['id']}").json()["status"] == "confirmed"
-    assert len(client.get("/api/comparisons").json()) == 1
+    assert client.get(f"/api/research/comparisons/{created['id']}").json()["status"] == "confirmed"
+    assert len(client.get("/api/research/comparisons").json()) == 1
 
 
 def test_reviewing_a_value_cannot_override_a_different_metric(client_db, monkeypatch):
@@ -233,7 +234,7 @@ def test_reviewing_a_value_cannot_override_a_different_metric(client_db, monkeyp
         }
 
     monkeypatch.setattr("app.api.comparisons.extract_evidence", extract)
-    created = client.post("/api/comparisons", json={
+    created = client.post("/api/research/comparisons", json={
         "paper_document_id": paper, "run_document_id": run,
         "provider_id": preset, "metric": "top-1 accuracy",
     }).json()
@@ -241,7 +242,7 @@ def test_reviewing_a_value_cannot_override_a_different_metric(client_db, monkeyp
     assert fields["metric"]["status"] == "mismatch"
     assert fields["value"]["status"] == "unknown"
 
-    saved = client.patch(f"/api/comparisons/{created['id']}", json={"updates": [{
+    saved = client.patch(f"/api/research/comparisons/{created['id']}", json={"updates": [{
         "key": "value", "paper_value": "81.3", "run_value": "81.3",
         "review_status": "confirmed", "note": "原文数值已核对",
     }]})
@@ -274,7 +275,7 @@ def test_review_cannot_compare_numbers_without_a_reported_metric(client_db, monk
         }
 
     monkeypatch.setattr("app.api.comparisons.extract_evidence", extract)
-    created = client.post("/api/comparisons", json={
+    created = client.post("/api/research/comparisons", json={
         "paper_document_id": paper, "run_document_id": run,
         "provider_id": preset, "metric": "top-1 accuracy",
     }).json()
@@ -282,7 +283,7 @@ def test_review_cannot_compare_numbers_without_a_reported_metric(client_db, monk
     assert fields["metric"]["status"] == "unknown"
     assert fields["value"]["status"] == "unknown"
 
-    saved = client.patch(f"/api/comparisons/{created['id']}", json={"updates": [{
+    saved = client.patch(f"/api/research/comparisons/{created['id']}", json={"updates": [{
         "key": "value", "paper_value": "81.3", "run_value": "81.3",
         "review_status": "confirmed", "note": "两个摘要都写 81.3",
     }]})
@@ -308,11 +309,11 @@ def test_manual_edit_that_lacks_cited_evidence_stays_unknown(client_db, monkeypa
         return {"dataset": Evidence("COCO", chunk["content"], chunk["id"])}
 
     monkeypatch.setattr("app.api.comparisons.extract_evidence", extract)
-    created = client.post("/api/comparisons", json={
+    created = client.post("/api/research/comparisons", json={
         "paper_document_id": paper, "run_document_id": run,
         "provider_id": preset_id, "metric": "accuracy",
     }).json()
-    record = client.patch(f"/api/comparisons/{created['id']}", json={"updates": [{
+    record = client.patch(f"/api/research/comparisons/{created['id']}", json={"updates": [{
         "key": "dataset", "paper_value": "COCO", "run_value": "ImageNet",
         "review_status": "confirmed", "note": "Needs manual source check",
     }]}).json()
@@ -340,7 +341,7 @@ def test_reviewer_can_search_selected_source_and_replace_verified_evidence(clien
         return {"dataset": Evidence("ImageNet-1K", "Dataset: ImageNet-1K", chunk["id"])}
 
     monkeypatch.setattr("app.api.comparisons.extract_evidence", extract)
-    created_response = client.post("/api/comparisons", json={
+    created_response = client.post("/api/research/comparisons", json={
         "paper_document_id": paper,
         "run_document_id": run,
         "provider_id": preset_id,
@@ -352,7 +353,7 @@ def test_reviewer_can_search_selected_source_and_replace_verified_evidence(clien
     assert field["status"] == "mismatch"
 
     paper_search = client.get(
-        f"/api/comparisons/{created['id']}/source-chunks/paper?q=Evaluation%20dataset",
+        f"/api/research/comparisons/{created['id']}/source-chunks/paper?q=Evaluation%20dataset",
     )
     assert paper_search.status_code == 200, paper_search.text
     paper_chunks = paper_search.json()
@@ -361,14 +362,14 @@ def test_reviewer_can_search_selected_source_and_replace_verified_evidence(clien
     assert "Evaluation dataset: ImageNet-1K" in paper_chunk["content"]
     assert "validation" not in paper_chunk["content"]
     assert client.get(
-        f"/api/comparisons/{created['id']}/source-chunks/paper?q=RunOnlyMarker",
+        f"/api/research/comparisons/{created['id']}/source-chunks/paper?q=RunOnlyMarker",
     ).json() == []
 
     run_chunks = client.get(
-        f"/api/comparisons/{created['id']}/source-chunks/run?q=Dataset",
+        f"/api/research/comparisons/{created['id']}/source-chunks/run?q=Dataset",
     ).json()
     run_chunk = run_chunks[0]
-    updated = client.patch(f"/api/comparisons/{created['id']}", json={"updates": [{
+    updated = client.patch(f"/api/research/comparisons/{created['id']}", json={"updates": [{
         "key": "dataset",
         "paper_value": "ImageNet-1K",
         "run_value": "ImageNet-1K",
@@ -389,7 +390,7 @@ def test_reviewer_can_search_selected_source_and_replace_verified_evidence(clien
     assert corrected["review_status"] == "confirmed"
     assert corrected["paper"]["excerpt"] == "Evaluation dataset: ImageNet-1K"
 
-    invalid_excerpt = client.patch(f"/api/comparisons/{created['id']}", json={"updates": [{
+    invalid_excerpt = client.patch(f"/api/research/comparisons/{created['id']}", json={"updates": [{
         "key": "dataset",
         "paper_value": "ImageNet-1K",
         "run_value": "ImageNet-1K",
@@ -406,7 +407,7 @@ def test_reviewer_can_search_selected_source_and_replace_verified_evidence(clien
     }]})
     assert invalid_excerpt.status_code == 422
 
-    invalid = client.patch(f"/api/comparisons/{created['id']}", json={"updates": [{
+    invalid = client.patch(f"/api/research/comparisons/{created['id']}", json={"updates": [{
         "key": "dataset",
         "paper_value": "ImageNet-1K",
         "run_value": "ImageNet-1K",
@@ -422,7 +423,7 @@ def test_reviewer_can_search_selected_source_and_replace_verified_evidence(clien
         "note": "",
     }]})
     assert invalid.status_code == 422
-    preserved = client.get(f"/api/comparisons/{created['id']}").json()
+    preserved = client.get(f"/api/research/comparisons/{created['id']}").json()
     corrected_after_rejection = next(
         row for row in preserved["fields"] if row["key"] == "dataset"
     )
@@ -445,7 +446,7 @@ def test_extraction_must_refer_to_the_selected_chunk(client_db, monkeypatch, inv
         return {"dataset": Evidence("COCO", chunk["content"], chunk_id)}
 
     monkeypatch.setattr("app.api.comparisons.extract_evidence", extract)
-    response = client.post("/api/comparisons", json={
+    response = client.post("/api/research/comparisons", json={
         "paper_document_id": paper, "run_document_id": run,
         "provider_id": preset_id, "metric": "accuracy",
     })
@@ -469,13 +470,13 @@ def test_upstream_error_does_not_save_a_candidate(client_db, monkeypatch):
         raise EvidenceExtractionError("模型服务暂时不可用")
 
     monkeypatch.setattr("app.api.comparisons.extract_evidence", fail)
-    response = client.post("/api/comparisons", json={
+    response = client.post("/api/research/comparisons", json={
         "paper_document_id": paper, "run_document_id": run,
         "provider_id": preset_id, "metric": "accuracy",
     })
     assert response.status_code == 502
-    assert "抽取失败" in response.json()["detail"]
-    assert client.get("/api/comparisons").json() == []
+    assert "读取失败" in response.json()["detail"]
+    assert client.get("/api/research/comparisons").json() == []
     with Session(engine) as session:
         assert session.exec(select(ComparisonRecord)).all() == []
 
@@ -498,13 +499,13 @@ def test_run_side_failure_is_identified_without_persisting_a_partial_record(
         return {"dataset": Evidence("ImageNet", chunk["content"], chunk["id"])}
 
     monkeypatch.setattr("app.api.comparisons.extract_evidence", extract)
-    response = client.post("/api/comparisons", json={
+    response = client.post("/api/research/comparisons", json={
         "paper_document_id": paper, "run_document_id": run,
         "provider_id": preset_id, "metric": "accuracy",
     })
     assert response.status_code == 502, response.text
-    assert response.json()["detail"].startswith("运行摘要抽取失败：")
-    assert client.get("/api/comparisons").json() == []
+    assert response.json()["detail"].startswith("运行摘要读取失败：")
+    assert client.get("/api/research/comparisons").json() == []
     with Session(engine) as session:
         assert session.exec(select(ComparisonRecord)).all() == []
 
@@ -554,17 +555,17 @@ def test_malformed_structured_output_does_not_save_a_candidate(client_db, monkey
             super().__init__(**kwargs, transport=httpx.MockTransport(respond))
 
     monkeypatch.setattr(comparison.httpx, "AsyncClient", MockClient)
-    result = client.post("/api/comparisons", json={
+    result = client.post("/api/research/comparisons", json={
         "paper_document_id": paper,
         "run_document_id": run,
         "provider_id": preset_id,
         "metric": "top-1 error",
     })
     assert result.status_code == 502, result.text
-    assert "抽取失败" in result.json()["detail"]
+    assert "读取失败" in result.json()["detail"]
     # Both sources start; one can be cancelled before using its single retry.
     assert 2 <= len(requests) <= 4
-    assert client.get("/api/comparisons").json() == []
+    assert client.get("/api/research/comparisons").json() == []
     with Session(engine) as session:
         assert session.exec(select(ComparisonRecord)).all() == []
 
@@ -592,7 +593,7 @@ def test_pair_deadline_returns_gateway_timeout_without_saving(client_db, monkeyp
         "app.application.service.comparison.COMPARISON_EXTRACTION_TIMEOUT_SECONDS", 0.01,
     )
     monkeypatch.setattr("app.api.comparisons.extract_evidence", slow_extract)
-    response = client.post("/api/comparisons", json={
+    response = client.post("/api/research/comparisons", json={
         "paper_document_id": paper,
         "run_document_id": run,
         "provider_id": preset_id,
@@ -601,7 +602,7 @@ def test_pair_deadline_returns_gateway_timeout_without_saving(client_db, monkeyp
     assert response.status_code == 504, response.text
     assert set(calls) == {paper, run}
     assert set(cancelled) == {paper, run}
-    assert client.get("/api/comparisons").json() == []
+    assert client.get("/api/research/comparisons").json() == []
     with Session(engine) as session:
         assert session.exec(select(ComparisonRecord)).all() == []
 
@@ -628,7 +629,7 @@ def test_pair_extraction_runs_both_sources_within_one_deadline(client_db, monkey
         "app.application.service.comparison.COMPARISON_EXTRACTION_TIMEOUT_SECONDS", 0.5,
     )
     monkeypatch.setattr("app.api.comparisons.extract_evidence", wait_for_pair)
-    response = client.post("/api/comparisons", json={
+    response = client.post("/api/research/comparisons", json={
         "paper_document_id": paper,
         "run_document_id": run,
         "provider_id": preset_id,
@@ -841,7 +842,11 @@ def test_comparison_evidence_view_is_limited_to_owned_source_chunks(client_db):
         run_chunk = session.exec(
             select(DocumentChunk).where(DocumentChunk.document_id == run_id)
         ).first()
+        conversation = Conversation(user_id=owner["id"], title="实验核验")
+        session.add(conversation)
+        session.flush()
         record = ComparisonRecord(
+            conversation_id=conversation.id,
             user_id=owner["id"], paper_document_id=paper_id, run_document_id=run_id,
             paper_name="paper.md", run_name="run.md", metric="top-1 error",
             provider_id=None, fields=[{
@@ -856,23 +861,119 @@ def test_comparison_evidence_view_is_limited_to_owned_source_chunks(client_db):
         record_id = record.id
         chunk_id = paper_chunk.id
 
-    response = client.get(f"/api/comparisons/{record_id}/evidence/paper/value")
+    response = client.get(f"/api/research/comparisons/{record_id}/evidence/paper/value")
     assert response.status_code == 200, response.text
     assert response.json()["filename"] == "paper.md"
     assert "22.85%" in response.json()["content"]
     assert response.json()["chunk_id"] == chunk_id
     assert response.json()["page_number"] is None
-    assert client.get(f"/api/comparisons/{record_id}/evidence/run/value").status_code == 200
-    assert client.get(f"/api/comparisons/{record_id}/evidence/other/value").status_code == 404
-    assert client.get(f"/api/comparisons/{record_id}/evidence/paper/model").status_code == 404
+    assert client.get(f"/api/research/comparisons/{record_id}/evidence/run/value").status_code == 200
+    assert client.get(f"/api/research/comparisons/{record_id}/evidence/other/value").status_code == 404
+    assert client.get(f"/api/research/comparisons/{record_id}/evidence/paper/model").status_code == 404
 
     register(client, "other-reader@example.com")
-    assert client.get(f"/api/comparisons/{record_id}/evidence/paper/value").status_code == 404
-    assert client.get(f"/api/comparisons/{record_id}/evidence/run/value").status_code == 404
+    assert client.get(f"/api/research/comparisons/{record_id}/evidence/paper/value").status_code == 404
+    assert client.get(f"/api/research/comparisons/{record_id}/evidence/run/value").status_code == 404
 
     client.post("/api/auth/login", json={
         "email": "reader@example.com", "password": "passphrase-123",
     })
     client.delete(f"/api/documents/{paper_id}")
-    assert client.get(f"/api/comparisons/{record_id}/evidence/paper/value").status_code == 404
-    assert client.get(f"/api/comparisons/{record_id}").json()["fields"][0]["paper"]["excerpt"]
+    assert client.get(f"/api/research/comparisons/{record_id}/evidence/paper/value").status_code == 404
+    assert client.get(f"/api/research/comparisons/{record_id}").json()["fields"][0]["paper"]["excerpt"]
+
+
+def test_experiment_checks_share_research_history_and_resource_lifecycle(client_db, monkeypatch):
+    client, engine = client_db
+    register(client, "unified@example.com")
+    selected_provider = provider(client)
+    paper = upload(client, "paper.md", "Dataset COCO metric mIoU 84%")
+    run = upload(client, "run.md", "Dataset COCO metric mIoU 81%")
+
+    async def extract(_config, source, _metric):
+        chunk = source["chunks"][0]
+        return {"dataset": Evidence("COCO", chunk["content"], chunk["id"])}
+
+    monkeypatch.setattr("app.api.comparisons.extract_evidence", extract)
+    response = client.post("/api/research/comparisons", json={
+        "paper_document_id": paper, "run_document_id": run,
+        "provider_id": selected_provider, "metric": "mIoU",
+    })
+    assert response.status_code == 201, response.text
+    record = response.json()
+    conversation_id = record["conversation_id"]
+    history = client.get("/api/research/conversations").json()
+    assert len(history) == 1
+    assert history[0]["kind"] == "comparison"
+    assert history[0]["comparison_id"] == record["id"]
+    assert history[0]["id"] == conversation_id
+    assert client.get("/api/research/comparisons").json()[0]["conversation_id"] == conversation_id
+    # Previously saved clients can still read the same record without creating a duplicate.
+    assert client.get(f"/api/comparisons/{record['id']}").json() == client.get(
+        f"/api/research/comparisons/{record['id']}"
+    ).json()
+    assert client.get("/api/comparisons").json() == client.get("/api/research/comparisons").json()
+    renamed = client.patch(f"/api/research/conversations/{conversation_id}", json={
+        "title": "复查分割模型结果",
+    }).json()
+    assert renamed["kind"] == "comparison"
+    assert renamed["comparison_id"] == record["id"]
+    assert renamed["title"] == "复查分割模型结果"
+    # A check cannot accidentally be used as an ordinary question-answer conversation.
+    assert client.post("/api/research/ask/stream", json={
+        "question": "继续研究这个问题", "provider_id": selected_provider,
+        "conversation_id": conversation_id,
+    }).status_code == 422
+    register(client, "other-unified@example.com")
+    assert client.get("/api/research/conversations").json() == []
+    assert client.delete(f"/api/research/conversations/{conversation_id}").status_code == 404
+    assert client.patch(f"/api/research/conversations/{conversation_id}", json={
+        "title": "不能改别人的记录",
+    }).status_code == 404
+    assert client.get(f"/api/research/comparisons/{record['id']}").status_code == 404
+    client.post("/api/auth/login", json={
+        "email": "unified@example.com", "password": "passphrase-123",
+    })
+    assert client.delete(f"/api/research/conversations/{conversation_id}").status_code == 204
+    assert client.get(f"/api/research/comparisons/{record['id']}").status_code == 404
+    assert len(client.get("/api/documents").json()) == 2
+    with Session(engine) as session:
+        assert not session.exec(select(ComparisonRecord)).all()
+        assert not session.exec(select(Conversation)).all()
+
+
+def test_comparison_and_history_are_rolled_back_together(client_db, monkeypatch):
+    from app.infrastructure.repo.comparison import SqlComparisonRepository
+
+    client, engine = client_db
+    register(client, "rollback-unified@example.com")
+    selected_provider = provider(client)
+    paper = upload(client, "paper.md", "Dataset COCO")
+    run = upload(client, "run.md", "Dataset COCO")
+
+    async def extract(_config, _source, _metric):
+        return {}
+
+    original_create = SqlComparisonRepository.create
+
+    def fail_after_insert(self, *args):
+        original_create(self, *args)
+        raise RuntimeError("Simulated persistence failure")
+
+    monkeypatch.setattr("app.api.comparisons.extract_evidence", extract)
+    monkeypatch.setattr(SqlComparisonRepository, "create", fail_after_insert)
+    with pytest.raises(RuntimeError, match="Simulated persistence failure"):
+        client.post("/api/research/comparisons", json={
+            "paper_document_id": paper, "run_document_id": run,
+            "provider_id": selected_provider, "metric": "mIoU",
+        })
+    with Session(engine) as session:
+        assert not session.exec(select(ComparisonRecord)).all()
+        assert not session.exec(select(Conversation)).all()
+
+
+def test_openapi_documents_only_the_integrated_research_endpoints():
+    paths = app.openapi()["paths"]
+    assert "/api/research/comparisons" in paths
+    assert "/api/research/comparisons/{comparison_id}/source-chunks/{side}" in paths
+    assert not any(path.startswith("/api/comparisons") for path in paths)

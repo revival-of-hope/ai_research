@@ -9,12 +9,12 @@ from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 from sqlmodel import Session, select
 
-from app.core.crypto import decrypt_secret
-from app.core.endpoints import validate_provider_url
 from app.domain.comparison import ComparisonNotFound, normalize_source_text
-from app.domain.research import DocumentNotFound, ProviderConfig, ProviderNotConfigured
-from app.models.accounts import ApiProvider
+from app.domain.research import DocumentNotFound, ProviderConfig
+from app.infrastructure.repo.resources import resolve_provider, selected_documents
+from app.models.accounts import utcnow
 from app.models.comparison import ComparisonRecord
+from app.models.conversations import Conversation
 from app.models.documents import DocumentChunk, SourceDocument
 
 
@@ -49,7 +49,7 @@ class SqlComparisonRepository:
             statement = statement.with_for_update().execution_options(populate_existing=True)
         record = self.session.exec(statement).first()
         if record is None:
-            raise ComparisonNotFound("对照记录不存在")
+            raise ComparisonNotFound("核验记录不存在")
         return record
 
     def _candidate(self, document: SourceDocument, metric: str, side: str = "paper") -> dict:
@@ -93,32 +93,10 @@ class SqlComparisonRepository:
     def prepare(
         self, user_id: int, paper_id: int, run_id: int, provider_id: int, metric: str,
     ) -> tuple[ProviderConfig, dict, dict]:
-        documents = self.session.exec(
-            select(SourceDocument).where(
-                SourceDocument.user_id == user_id,
-                SourceDocument.status == "ready",
-                SourceDocument.id.in_((paper_id, run_id)),
-            )
-        ).all()
-        by_id = {row.id: row for row in documents}
-        if paper_id == run_id or set(by_id) != {paper_id, run_id}:
+        if paper_id == run_id:
             raise DocumentNotFound("请选择两份不同、本人所有且已就绪的资料")
-        provider = self.session.exec(
-            select(ApiProvider).where(ApiProvider.id == provider_id, ApiProvider.user_id == user_id)
-        ).first()
-        if provider is None:
-            raise ProviderNotConfigured("模型预设不存在或无权访问")
-        key = decrypt_secret(provider.api_key_encrypted)
-        if not key:
-            raise ProviderNotConfigured("模型预设缺少 API 密钥")
-        config = ProviderConfig(
-            id=provider.id,
-            name=provider.name,
-            base_url=validate_provider_url(provider.base_url),
-            model=provider.model,
-            api_key=key,
-            provider_type=provider.provider_type,
-        )
+        by_id = selected_documents(self.session, user_id, (paper_id, run_id))
+        config = resolve_provider(self.session, user_id, provider_id)
         paper = self._candidate(by_id[paper_id], metric, "paper")
         run = self._candidate(by_id[run_id], metric, "run")
         if not paper["chunks"] or not run["chunks"]:
@@ -134,6 +112,7 @@ class SqlComparisonRepository:
         return [
             {
                 "id": row.id, "metric": row.metric, "paper_name": row.paper_name,
+                "conversation_id": row.conversation_id,
                 "run_name": row.run_name, "status": row.status, "created_at": row.created_at,
             }
             for row in rows
@@ -148,7 +127,7 @@ class SqlComparisonRepository:
             raise ComparisonNotFound("证据来源不存在")
         field = next((row for row in record.fields if row["key"] == key), None)
         if field is None or field[side].get("chunk_id") is None:
-            raise ComparisonNotFound("该字段没有可查看的原文片段")
+            raise ComparisonNotFound("这一项没有可查看的原文")
         document_id = (
             record.paper_document_id if side == "paper" else record.run_document_id
         )
@@ -158,7 +137,7 @@ class SqlComparisonRepository:
             )
         ).first()
         if document is None:
-            raise ComparisonNotFound("来源资料已删除，历史摘录仍保留在对照记录中")
+            raise ComparisonNotFound("来源资料已删除，保存的原文摘录仍可查看")
         chunk = self.session.exec(
             select(DocumentChunk).where(
                 DocumentChunk.id == field[side]["chunk_id"],
@@ -192,7 +171,7 @@ class SqlComparisonRepository:
             )
         ).first()
         if document is None:
-            raise ComparisonNotFound("本次对照来源已不可用")
+            raise ComparisonNotFound("本次核验使用的资料已不可用")
 
         if query is None or not query.strip():
             chunks = self._candidate(document, record.metric)["chunks"]
@@ -242,7 +221,7 @@ class SqlComparisonRepository:
             )
         ).first()
         if document is None:
-            raise ComparisonNotFound("本次对照来源已删除")
+            raise ComparisonNotFound("本次核验使用的资料已删除")
         chunk = self.session.exec(
             select(DocumentChunk).where(
                 DocumentChunk.id == chunk_id,
@@ -250,7 +229,7 @@ class SqlComparisonRepository:
             )
         ).first()
         if chunk is None:
-            raise ValueError("所选文本片段不属于当前对照的来源")
+            raise ValueError("请选择本次核验所用资料中的原文")
         if normalize_source_text(excerpt) not in normalize_source_text(chunk.content):
             raise ValueError("原文摘录必须能在所选文本片段中核实")
 
@@ -261,8 +240,12 @@ class SqlComparisonRepository:
         self, user_id: int, paper: dict, run: dict,
         provider_id: int, metric: str, fields: list[dict],
     ) -> dict:
+        conversation = Conversation(user_id=user_id, title=f"实验核验：{metric}"[:160])
+        self.session.add(conversation)
+        self.session.flush()
         record = ComparisonRecord(
             user_id=user_id,
+            conversation_id=int(conversation.id),
             paper_document_id=paper["id"],
             run_document_id=run["id"],
             paper_name=paper["filename"],
@@ -282,5 +265,9 @@ class SqlComparisonRepository:
         record.fields = fields
         record.status = status
         self.session.add(record)
+        conversation = self.session.get(Conversation, record.conversation_id)
+        if conversation is not None:
+            conversation.updated_at = utcnow()
+            self.session.add(conversation)
         self.session.flush()
         return record.model_dump()

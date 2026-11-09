@@ -2,7 +2,7 @@
 
 import httpx
 from openai import APIConnectionError, APIStatusError, APITimeoutError
-from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior, UsageLimitExceeded
+from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
 
 from app.domain.research import ResearchError
 
@@ -20,8 +20,6 @@ def provider_error_message(error: BaseException) -> str:
         return "模型请求超时，请减少研究范围或选择快速模式后重试。"
     if isinstance(error, (httpx.HTTPError, APIConnectionError)):
         return "无法连接模型服务，请检查请求网址、代理和网络。"
-    if isinstance(error, UsageLimitExceeded):
-        return "已达到本次研究的模型调用或 token 预算，请减少研究范围后重试。"
     if isinstance(error, UnexpectedModelBehavior):
         return "模型响应不符合研究要求，请选择支持 Responses 工具调用和结构化输出的模型。"
     return "模型调用未完成，请检查请求网址、模型权限、服务商额度和网络。"

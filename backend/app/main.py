@@ -41,8 +41,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for route in (auth.router, accounts.router, documents.router, research.router, comparisons.router, admin.router):
+for route in (auth.router, accounts.router, documents.router, research.router, admin.router):
     app.include_router(route, prefix=settings.api_prefix)
+
+# Existing integrations keep working while all documented clients use the research API.
+app.include_router(comparisons.router, prefix=settings.api_prefix, include_in_schema=False)
 
 
 @app.exception_handler(WorkspaceError)

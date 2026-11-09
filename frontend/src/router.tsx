@@ -23,7 +23,8 @@ export const router = createBrowserRouter([
       children: [
         { index: true, element: <Navigate to="/research" replace /> },
         { path: "research", element: <ResearchPage /> },
-        { path: "comparison", element: <ComparisonPage /> },
+        { path: "research/comparisons", element: <ComparisonPage /> },
+        { path: "comparison", element: <Navigate to="/research/comparisons" replace /> },
         { path: "sources", element: <SourcesPage /> },
         { path: "usage", element: <UsagePage /> },
         { path: "settings", element: <SettingsPage /> },

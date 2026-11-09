@@ -13,6 +13,7 @@ class ComparisonRecord(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user_account.id", index=True)
+    conversation_id: int = Field(foreign_key="conversation.id", unique=True, index=True)
     paper_document_id: int
     run_document_id: int
     paper_name: str = Field(max_length=255)

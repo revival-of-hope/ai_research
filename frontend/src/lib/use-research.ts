@@ -192,6 +192,7 @@ export function useResearch(userId?: number) {
     selectedDocs, webSearch, mode, maxAgents, maxDepth, question,
     busy, loading, historyLoading, error, lastQuestion,
     setQuestion, setMode, setWebSearch, setMaxAgents, setMaxDepth,
+    selectDocuments: (ids: number[]) => setSelectedDocs([...new Set(ids)].filter((id) => documents.some((doc) => doc.id === id && doc.status === "ready")).slice(0, 30)),
     toggleDocument: (id: number) => {
       if (selectedDocs.includes(id)) setSelectedDocs((current) => current.filter((item) => item !== id));
       else if (selectedDocs.length >= 30) setError("单次研究最多选择 30 份资料。");

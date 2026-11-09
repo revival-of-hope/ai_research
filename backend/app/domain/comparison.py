@@ -466,4 +466,4 @@ def field_dicts(fields: list[ComparedField]) -> list[dict]:
 
 def confirm_fields(fields: list[ComparedField]) -> None:
     if any(item.review_status == "pending" for item in fields):
-        raise ComparisonConflict("还有待复核字段，请确认或标记未解决后再保存摘要")
+        raise ComparisonConflict("还有内容尚未检查，请逐项确认或标记为未解决后再保存")

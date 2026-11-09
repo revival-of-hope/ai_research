@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { ResearchComposer } from "@/components/research/research-composer";
 import { ResearchSidebar } from "@/components/research/research-sidebar";
@@ -10,6 +11,10 @@ import { useResearch } from "@/lib/use-research";
 export function ResearchPage() {
   const { user, logout } = useAuth();
   const research = useResearch(user?.id);
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const loadedLocation = useRef("");
+  const locationKey = params.toString();
   const [settingsSection, setSettingsSection] = useState<SettingsSection>();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dismissedError, setDismissedError] = useState("");
@@ -19,6 +24,24 @@ export function ResearchPage() {
   const error = pageError || research.error;
   const title = research.conversations.find((item) => item.id === research.conversationId)?.title;
 
+  useEffect(() => {
+    if (research.loading || research.busy || loadedLocation.current === locationKey) return;
+    loadedLocation.current = locationKey;
+    const id = Number(params.get("conversation"));
+    if (Number.isSafeInteger(id) && id > 0) {
+      const item = research.conversations.find((conversation) => conversation.id === id);
+      if (item?.kind === "comparison" && item.comparison_id) {
+        navigate(`/research/comparisons?comparison=${item.comparison_id}`, { replace: true });
+        return;
+      }
+      void research.openConversation(id);
+    }
+    const mode = params.get("mode");
+    if (mode === "quick" || mode === "deep") research.setMode(mode);
+    const ids = params.getAll("document").map(Number).filter((value) => Number.isSafeInteger(value) && value > 0);
+    research.selectDocuments(ids);
+  }, [locationKey, research.loading, research.busy, research, params, navigate]);
+
   function fillQuestion(value: string) {
     research.setQuestion(value);
     requestAnimationFrame(() => document.getElementById("research-question")?.focus());
@@ -27,8 +50,19 @@ export function ResearchPage() {
   const composer = <ResearchComposer value={research.question} documents={research.documents} providers={research.providers.filter((item) => item.compatible)} selectedProviderId={research.selectedProviderId} selectedDocs={research.selectedDocs} webSearch={research.webSearch} mode={research.mode} busy={research.busy} disabled={research.loading || research.historyLoading} spacious={!research.messages.length} onChange={research.setQuestion} onToggleDocument={research.toggleDocument} onToggleWeb={() => research.setWebSearch((value) => !value)} onSelectProvider={research.selectProvider} onConfigureProviders={() => setSettingsSection("providers")} onOpenSources={() => setSettingsSection("sources")} onSubmit={() => { setPageError(""); setDismissedError(""); void research.submit(); }} onStop={research.stop} />;
 
   return <div className="flex h-dvh overflow-hidden bg-white text-slate-950">
-    <ResearchSidebar conversations={research.conversations} activeId={research.conversationId} email={user?.email} isAdmin={user?.is_admin} busy={research.busy} loading={research.loading} mobileOpen={mobileOpen} mode={research.mode} maxAgents={research.maxAgents} maxDepth={research.maxDepth} disabled={research.busy || research.loading || research.historyLoading} onModeChange={research.setMode} onMaxAgentsChange={research.setMaxAgents} onMaxDepthChange={research.setMaxDepth} onCloseMobile={closeMobile} onNew={research.newConversation} onOpen={(id) => void research.openConversation(id)} onRename={research.renameConversation} onDelete={research.deleteConversation} onOpenSettings={setSettingsSection} onLogout={() => { void logout().catch((reason) => setPageError(reason instanceof Error ? reason.message : "退出登录失败")); }} />
-    <ResearchWorkspace composer={composer} messages={research.messages} busy={research.busy} loading={research.loading} historyLoading={research.historyLoading} title={title} mode={research.mode} error={error === dismissedError ? "" : error} canRecover={!!research.lastQuestion} onSuggestion={(value) => { research.setMode("deep"); fillQuestion(value); }} onOpenMenu={() => setMobileOpen(true)} onOpenSources={() => setSettingsSection("sources")} onOpenProviders={() => setSettingsSection("providers")} onRetryLoad={() => { setDismissedError(""); setPageError(""); void research.loadWorkspace(); }} onRecover={() => fillQuestion(research.lastQuestion)} onEditQuestion={fillQuestion} onDismissError={() => setDismissedError(error)} />
+    <ResearchSidebar conversations={research.conversations} activeId={research.conversationId} email={user?.email} isAdmin={user?.is_admin} busy={research.busy} loading={research.loading} mobileOpen={mobileOpen} mode={research.mode} maxAgents={research.maxAgents} maxDepth={research.maxDepth} disabled={research.busy || research.loading || research.historyLoading} onModeChange={research.setMode} onMaxAgentsChange={research.setMaxAgents} onMaxDepthChange={research.setMaxDepth} onCloseMobile={closeMobile} onNew={() => { research.newConversation(); navigate("/research"); }} onOpen={(id) => {
+      const item = research.conversations.find((conversation) => conversation.id === id);
+      if (item?.kind === "comparison" && item.comparison_id) navigate(`/research/comparisons?comparison=${item.comparison_id}`);
+      else {
+        loadedLocation.current = `conversation=${id}`;
+        navigate(`/research?conversation=${id}`);
+        void research.openConversation(id);
+      }
+    }} onRename={research.renameConversation} onDelete={async (id) => {
+      await research.deleteConversation(id);
+      if (research.conversationId === id) navigate("/research");
+    }} onOpenSettings={setSettingsSection} onLogout={() => { void logout().catch((reason) => setPageError(reason instanceof Error ? reason.message : "退出登录失败")); }} />
+    <ResearchWorkspace composer={composer} messages={research.messages} busy={research.busy} loading={research.loading} historyLoading={research.historyLoading} title={title} mode={research.mode} onModeChange={research.setMode} error={error === dismissedError ? "" : error} canRecover={!!research.lastQuestion} onSuggestion={(value) => { research.setMode("deep"); fillQuestion(value); }} onOpenMenu={() => setMobileOpen(true)} onOpenSources={() => setSettingsSection("sources")} onOpenProviders={() => setSettingsSection("providers")} onRetryLoad={() => { setDismissedError(""); setPageError(""); void research.loadWorkspace(); }} onRecover={() => fillQuestion(research.lastQuestion)} onEditQuestion={fillQuestion} onDismissError={() => setDismissedError(error)} />
     {settingsSection && <SettingsDialog section={settingsSection} providers={research.providers} onSectionChange={setSettingsSection} onProvidersChanged={research.loadProviders} onDocumentsChanged={() => { void research.loadDocuments().catch((reason) => setPageError(reason instanceof Error ? reason.message : "资料加载失败")); }} onClose={closeSettings} />}
   </div>;
 }

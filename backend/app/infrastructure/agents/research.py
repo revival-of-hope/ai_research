@@ -78,8 +78,8 @@ Return useful public findings, never private chain-of-thought or hidden reasonin
 """
 
 
-class BudgetedModel(WrapperModel):
-    """Reserve before I/O, so concurrent/delegated agents cannot overspend requests.
+class ObservedModel(WrapperModel):
+    """Count requests before I/O and bound simultaneous work and response time.
 
     The semaphore covers model requests rather than whole agent runs: a parent
     waiting on a child tool never holds a concurrency slot and cannot deadlock it.
@@ -90,13 +90,6 @@ class BudgetedModel(WrapperModel):
         super().__init__(wrapped)
         self.runner = runner
 
-    def _reserve(self) -> None:
-        if self.runner.usage.input_tokens + self.runner.usage.output_tokens >= (
-            self.runner.limits.total_tokens
-        ):
-            raise BudgetExceeded("已达到本次研究的 token 预算")
-        self.runner.budget.reserve_request()
-
     async def request(
         self,
         messages: list[ModelMessage],
@@ -104,7 +97,7 @@ class BudgetedModel(WrapperModel):
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
         async with self.runner.semaphore:
-            self._reserve()
+            self.runner.budget.record_request()
             async with asyncio.timeout(self.runner.limits.request_timeout_seconds):
                 return await self.wrapped.request(
                     messages, model_settings, model_request_parameters
@@ -119,7 +112,7 @@ class BudgetedModel(WrapperModel):
         run_context: RunContext[Any] | None = None,
     ) -> AsyncIterator[StreamedResponse]:
         async with self.runner.semaphore:
-            self._reserve()
+            self.runner.budget.record_request()
             async with asyncio.timeout(self.runner.limits.request_timeout_seconds):
                 async with self.wrapped.request_stream(
                     messages, model_settings, model_request_parameters, run_context
@@ -152,10 +145,14 @@ class PydanticResearchRunner:
         self._client: AsyncOpenAI | None = None
         self._agents: dict[str, Agent] = {}
         self._statuses: dict[str, dict] = {}
+        # Omitting UsageLimits would restore Pydantic AI's default 50-request ceiling.
+        # Every role and delegated child receives this same quota-free configuration.
         self._usage_limits = UsageLimits(
-            request_limit=self.limits.requests,
-            tool_calls_limit=self.limits.tool_calls,
-            total_tokens_limit=self.limits.total_tokens,
+            request_limit=None,
+            tool_calls_limit=None,
+            input_tokens_limit=None,
+            output_tokens_limit=None,
+            total_tokens_limit=None,
         )
         for index, chunk in enumerate(prepared.local_chunks, 1):
             label = f"Local {index}"
@@ -244,7 +241,7 @@ class PydanticResearchRunner:
                 else output
             )
             self._agents[name] = Agent(
-                BudgetedModel(models[name], self),
+                ObservedModel(models[name], self),
                 name=f"research_{name}",
                 output_type=output_type,
                 deps_type=ResearcherDeps if name == "researcher" else None,
@@ -256,21 +253,18 @@ class PydanticResearchRunner:
         @self._agents["researcher"].tool
         async def search_web(ctx: RunContext[ResearcherDeps], query: str) -> list[dict]:
             """Search the provider for evidence; returns citation labels and attributed excerpts."""
-            self.budget.reserve_tool()
+            self.budget.record_tool()
             if not self.prepared.command.web_search:
                 return [{"status": "disabled", "message": "用户未开启联网搜索，使用本地证据。"}]
             if not query.strip() or len(query) > 500:
                 return [{"status": "invalid", "message": "搜索关键词需为 1 至 500 个字符"}]
-            try:
-                self.budget.reserve_search()
-            except BudgetExceeded as error:
-                return [{"status": "budget_exhausted", "message": str(error)}]
+            self.budget.record_search()
             return await self._search_evidence(query.strip(), ctx.deps.agent_id)
 
         @self._agents["researcher"].tool
         async def delegate_research(ctx: RunContext[ResearcherDeps], task: str) -> dict:
             """Spawn and await a focused child researcher, within shared depth and agent budgets."""
-            self.budget.reserve_tool()
+            self.budget.record_tool()
             if not task.strip() or len(task) > 1_500:
                 return {"status": "invalid", "message": "子任务需为 1 至 1500 个字符"}
             try:
@@ -309,10 +303,8 @@ class PydanticResearchRunner:
         self.usage.input_tokens += usage.get("input_tokens", 0)
         self.usage.output_tokens += usage.get("output_tokens", 0)
 
-    def _reserve_search_request(self) -> None:
-        if self.usage.input_tokens + self.usage.output_tokens >= self.limits.total_tokens:
-            raise BudgetExceeded("已达到本次研究的 token 预算")
-        self.budget.reserve_request()
+    def _record_search_request(self) -> None:
+        self.budget.record_request()
 
     async def _emit(self, event_type: str, data: dict) -> None:
         event = ResearchEvent(event_type, data)
@@ -353,7 +345,7 @@ class PydanticResearchRunner:
             async with self.search_semaphore, self.semaphore, asyncio.timeout(35):
                 search = self._search or make_web_search(
                     self.prepared.provider,
-                    on_model_request=self._reserve_search_request,
+                    on_model_request=self._record_search_request,
                     on_usage=self._record_search_usage,
                 )
                 raw = await search(query, 5)
@@ -438,8 +430,8 @@ class PydanticResearchRunner:
             "plan", {"steps": [{"id": agent_id, "title": step.title} for agent_id, step in tasks]}
         )
         if command.web_search:
-            # The initial provider search is explicit, shared, and charged to the search budget.
-            self.budget.reserve_search()
+            # The initial provider search is explicit and included in shared usage.
+            self.budget.record_search()
             await self._search_evidence(command.question[:500], "supervisor")
         await self._emit(
             "progress", {"stage": "researching", "message": "研究者正在并行收集和核对证据"}

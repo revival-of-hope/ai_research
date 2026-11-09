@@ -32,6 +32,8 @@ class ConversationPublic(BaseModel):
     title: str
     created_at: datetime
     updated_at: datetime
+    kind: Literal["research", "comparison"] = "research"
+    comparison_id: int | None = None
 
 
 class MessagePublic(BaseModel):

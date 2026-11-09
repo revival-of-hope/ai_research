@@ -140,7 +140,7 @@ def test_legacy_upgrade_downgrade_and_reupgrade_preserve_data(monkeypatch):
 
             def verify_new_defaults():
                 assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-                    "0010_comparison",
+                    "0011_research_comparisons",
                 )
                 assert connection.execute(
                     "SELECT sources,events,usage,run_id,status FROM message"
@@ -151,7 +151,7 @@ def test_legacy_upgrade_downgrade_and_reupgrade_preserve_data(monkeypatch):
                 assert {
                     "id", "user_id", "paper_document_id", "run_document_id",
                     "paper_name", "run_name", "provider_id", "metric", "status",
-                    "fields", "created_at",
+                    "fields", "created_at", "conversation_id",
                 } <= set(columns("comparison_record"))
                 assert connection.execute(
                     "SELECT DISTINCT provider_type FROM api_provider"
@@ -196,4 +196,70 @@ def test_legacy_upgrade_downgrade_and_reupgrade_preserve_data(monkeypatch):
         finally:
             connection.execute("SET search_path TO pg_catalog")
             # The exact generated schema was created above; existing schemas are untouched.
+            connection.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+
+
+def test_existing_checks_are_backfilled_into_owned_history_without_changing_snapshots(monkeypatch):
+    from app.core.config import settings
+
+    url = make_url(TEST_URL)
+    assert url.get_backend_name() == "postgresql"
+    connect_url = url.set(drivername="postgresql").render_as_string(hide_password=False)
+    schema = "ai_research_history_" + uuid4().hex
+    with psycopg.connect(connect_url, autocommit=True, connect_timeout=5) as connection:
+        connection.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        try:
+            connection.execute(sql.SQL("SET search_path TO {}").format(sql.Identifier(schema)))
+            monkeypatch.setattr(settings, "database_url", url.set(
+                drivername="postgresql+psycopg",
+                query={key: value for key, value in url.query.items() if key != "options"},
+            ).render_as_string(hide_password=False))
+            monkeypatch.setenv("PGOPTIONS", "-csearch_path=" + schema)
+            config = Config(str(BACKEND / "alembic.ini"))
+            config.set_main_option("script_location", str(BACKEND / "alembic"))
+            command.upgrade(config, "0010_comparison")
+            for number, status in [(1, "pending"), (2, "confirmed")]:
+                user_id = connection.execute(
+                    "INSERT INTO user_account (email,password_hash,is_active,is_admin,created_at) "
+                    "VALUES (%s,'preserved',true,false,now()) RETURNING id",
+                    (f"history-{number}@example.invalid",),
+                ).fetchone()[0]
+                connection.execute(
+                    "INSERT INTO comparison_record "
+                    "(user_id,paper_document_id,run_document_id,paper_name,run_name,"
+                    "provider_id,metric,status,fields,created_at) VALUES "
+                    "(%s,11,12,'paper.pdf','run.md',NULL,'top-1 error',%s,%s::json,now())",
+                    (user_id, status, '[{"key":"dataset","note":"review preserved"}]'),
+                )
+            original = connection.execute(
+                "SELECT id,user_id,paper_document_id,run_document_id,paper_name,run_name,"
+                "provider_id,metric,status,fields,created_at FROM comparison_record ORDER BY id"
+            ).fetchall()
+            command.upgrade(config, "head")
+            migrated = connection.execute(
+                "SELECT id,user_id,paper_document_id,run_document_id,paper_name,run_name,"
+                "provider_id,metric,status,fields,created_at FROM comparison_record ORDER BY id"
+            ).fetchall()
+            assert migrated == original
+            histories = connection.execute(
+                "SELECT r.user_id,c.user_id,r.created_at=c.created_at,c.title "
+                "FROM comparison_record r JOIN conversation c ON c.id=r.conversation_id"
+            ).fetchall()
+            assert len(histories) == 2
+            assert all(owner == history_owner and same_time
+                       and title == "实验核验：top-1 error"
+                       for owner, history_owner, same_time, title in histories)
+            with pytest.raises(psycopg.errors.ForeignKeyViolation):
+                connection.execute("DELETE FROM conversation")
+            with pytest.raises(psycopg.errors.UniqueViolation):
+                connection.execute(
+                    "UPDATE comparison_record SET conversation_id="
+                    "(SELECT conversation_id FROM comparison_record WHERE id=1) WHERE id=2"
+                )
+            command.downgrade(config, "0010_comparison")
+            assert connection.execute(
+                "SELECT * FROM comparison_record ORDER BY id"
+            ).fetchall() == original
+        finally:
+            connection.execute("SET search_path TO pg_catalog")
             connection.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))

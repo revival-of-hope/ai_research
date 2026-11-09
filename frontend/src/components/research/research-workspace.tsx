@@ -1,7 +1,8 @@
-import { ArrowDown, ArrowUpRight, BookOpen, ChartNoAxesCombined, ChevronDown, Database, FileSearch, LoaderCircle, Menu, RefreshCw, Settings2, Sparkles, X } from "lucide-react";
+import { ArrowDown, ArrowUpRight, BookOpen, ChartNoAxesCombined, ChevronDown, Database, FileSearch, LoaderCircle, Menu, RefreshCw, Settings2, X } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { WorkspaceBreadcrumb } from "@/components/shell/workspace-breadcrumb";
+import { ResearchTaskNavigation } from "@/components/research/research-task-navigation";
 import type { Message, ResearchMode } from "@/lib/types";
 
 const MessageList = lazy(() => import("@/components/research/message-list").then((module) => ({ default: module.MessageList })));
@@ -20,6 +21,7 @@ type Props = {
   historyLoading: boolean;
   title?: string;
   mode: ResearchMode;
+  onModeChange: (mode: ResearchMode) => void;
   error: string;
   canRecover: boolean;
   onSuggestion: (question: string) => void;
@@ -54,15 +56,16 @@ export function ResearchWorkspace(props: Props) {
     </header>
 
     {props.historyLoading ? <div role="status" className="grid min-h-0 flex-1 place-items-center"><div className="flex items-center gap-2 text-sm text-slate-400"><LoaderCircle className="size-4 animate-spin" />正在读取对话记录…</div></div> : empty ? <div className="min-h-0 flex-1 overflow-y-auto px-4 py-8 sm:px-8 sm:py-14">
-      <div className="research-content flex min-h-full flex-col justify-center pb-2 lg:pb-8">
-        <div className="mb-8 text-center sm:mb-10"><div className="mb-5 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50/60 px-3 py-1.5 text-[11px] font-medium text-blue-600"><Sparkles className="size-3" />{props.mode === "deep" ? "你的研究工作台" : "快速问答"}</div><h2 className="text-[27px] font-semibold tracking-tight text-slate-900 sm:text-[34px]">{props.mode === "deep" ? "把好问题，研究透。" : "有问题，直接聊。"}</h2><p className="mt-3 text-sm leading-6 text-slate-400">{props.mode === "deep" ? "让智能体协作探索，从联网信息和你的资料中整理有据可依的答案。" : "由你选择的模型直接回答，按需结合联网搜索与资料。"}</p></div>
+      <div className="mx-auto flex min-h-full w-full max-w-[1100px] flex-col justify-center pb-2 lg:pb-8">
+        <div className="mb-7 sm:mb-9"><h1 className="text-[29px] font-semibold leading-snug tracking-tight text-slate-900 sm:text-[40px]">{props.mode === "deep" ? "让每一个结论，都有据可循。" : "从一个问题开始。"}</h1><p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500">{props.mode === "deep" ? "连接资料与公开信息，协作完成深入研究。也可以核验论文与本地实验，逐项追溯差异。" : "由你选择的模型直接回答，结合联网搜索与资料，保留每一轮来源与对话。"}</p></div>
+        <div className="mb-5"><ResearchTaskNavigation task={props.mode} onModeChange={props.onModeChange} disabled={props.busy || props.historyLoading} /></div>
         {props.composer}
         {props.loading && <p role="status" className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-400"><LoaderCircle className="size-3 animate-spin" />正在载入模型和资料…</p>}
         {props.error && <div className="mt-5">{error}</div>}
         {props.mode === "deep" && <div className="mt-9 grid gap-3 sm:grid-cols-3">
           {suggestions.map(({ title, detail, prompt, icon: Icon }) => <button key={title} disabled={props.loading} onClick={() => props.onSuggestion(prompt)} className="group rounded-2xl border border-slate-200/80 bg-white p-4 text-left transition hover:border-blue-200 hover:bg-blue-50/20 disabled:opacity-50"><div className="flex items-center justify-between"><span className="grid size-8 place-items-center rounded-xl bg-slate-50 text-slate-500 transition group-hover:bg-blue-50 group-hover:text-blue-600"><Icon className="size-4" /></span><ArrowUpRight className="size-3.5 text-slate-300 group-hover:text-blue-500" /></div><p className="mt-3 text-xs font-semibold text-slate-700">{title}</p><p className="mt-1.5 text-[11px] leading-5 text-slate-400">{detail}</p></button>)}
         </div>}
-        {props.mode === "deep" && <p className="mt-7 text-center text-[10px] tracking-wide text-slate-300">清晰计划<span className="px-2.5">·</span>智能体协作<span className="px-2.5">·</span>逐条来源引用</p>}
+        {props.mode === "deep" && <p className="mt-6 text-xs leading-6 text-slate-400">研究过程与实验核验统一保存在左侧历史，随时回来继续。</p>}
       </div>
     </div> : <>
       <div ref={scroll} aria-label="对话内容" onScroll={() => { const node = scroll.current; if (!node) return; const near = node.scrollHeight - node.scrollTop - node.clientHeight < 100; autoFollow.current = near; setAtBottom(near); }} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">

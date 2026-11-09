@@ -10,7 +10,7 @@ from app.core.local_secrets import load_or_create_local_secrets
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
-    app_name: str = "AI Research Assistant"
+    app_name: str = "研知 Research"
     api_prefix: str = "/api"
     database_url: str = "postgresql+psycopg://research:research@postgres:5432/research"
     # Development defaults; configure credentials and HTTPS before production use.

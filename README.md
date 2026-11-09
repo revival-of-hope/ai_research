@@ -1,6 +1,6 @@
-# AI Research Assistant
+# 研知 Research
 
-自托管的多智能体研究工作台，使用 FastAPI、Pydantic AI、PostgreSQL 与 React。模型调用统一使用 **Responses API**。
+自托管的研究工作台，把快速问答、深度研究和实验核验放在一起。使用 FastAPI、Pydantic AI、PostgreSQL 与 React，模型调用统一使用 **Responses API**。
 
 ## 快速启动
 
@@ -54,13 +54,13 @@ DeepSeek 深度研究的计划、笔记和审阅使用 Responses 原生 JSON Sch
 - 深度研究使用主管计划、并行研究者、受预算约束的子任务派生、证据审阅与流式报告。模式切换、协作规模和层级设置集中在左侧边栏，正文与输入区共享更宽的阅读空间。
 - 联网搜索使用 DeepSeek 官方 Search 或 OpenAI Responses 原生 web_search，不再依赖第三方匿名搜索引擎。保留搜索开关与来源引用；模型生成的搜索摘要明确标识，不当作网页原文。
 - TXT、Markdown、CSV、DOCX、文本 PDF 上传和中英文词法检索；只读取本人明确选择且处理完成的资料。暂不支持 OCR、扫描件、图片和 XLSX。
-- 论文结果对照：选择论文与本地运行摘要，对照带文本块定位的字段证据并逐项复核；接口与限制见 [UC08 对照说明](docs/comparison.md)。
+- 实验核验：选择论文与本地运行摘要，核对实验条件和结果、查看原文、修改内容并逐项确认。与问答共用资料、模型和历史；详见 [使用说明](docs/guide.md)。
 - 会话、每轮来源、公开活动、状态与已报告 token 用量持久化；支持停止、编辑重试、历史搜索、重命名和 Markdown 导出。
 - 不展示或持久保存模型的私密思考过程；失败与取消不会伪装成成功报告。
 
-运行与当前 SSE 请求绑定，离开页面或连接断开会取消；暂不支持进程崩溃后的自动续跑。用量来自上游已返回的 usage，不等同服务商账单；并发在途请求可能越过 token 预算阈值。
+运行与当前 SSE 请求绑定，离开页面或连接断开会取消；暂不支持进程崩溃后的自动续跑。用量来自上游已返回的 usage，不等同服务商账单。单次研究不再设置请求、搜索、工具调用次数或累计 token 配额，仍保留并发、协作规模、超时和取消。
 
-DeepSeek Search 按独立搜索请求计费，适用于 `deepseek-flash`；OpenAI 深度研究的独立搜索会额外调用一次模型，已纳入请求和 token 预算。快速问答的 OpenAI 搜索随同一次 Responses 调用执行。只有开启联网时才启用搜索；未接入官方搜索的提供方可关闭联网使用。[官方搜索契约与限制](docs/search.md)
+DeepSeek Search 按独立搜索请求计费，适用于 `deepseek-flash`；OpenAI 深度研究的独立搜索会额外调用一次模型，已纳入请求和 token 用量统计。快速问答的 OpenAI 搜索随同一次 Responses 调用执行。只有开启联网时才启用搜索；未接入官方搜索的提供方可关闭联网使用。[官方搜索契约与限制](docs/search.md)
 
 ## 本地开发
 
@@ -99,15 +99,15 @@ npm test
 npm run build
 ```
 
-确定性测试使用 TestModel、FunctionModel 和 HTTP MockTransport，无需真实模型密钥。覆盖协作、预算、取消、失败、资源所有权、密钥与重启、提供方目录、Models API 及 Responses 请求。
+确定性测试使用 TestModel、FunctionModel 和 HTTP MockTransport，无需真实模型密钥。覆盖协作、无累计配额的多步调用、取消、失败、资源所有权、统一历史、旧核验迁移、密钥与重启、提供方目录、Models API 及 Responses 请求。
 
 [GitHub Actions CI](.github/workflows/ci.yml) 在 push / pull request 时运行后端检查、测试与前端构建。后端 job 使用 PostgreSQL 17 独立空库验证旧版数据升级、降级和再次升级。本地设置 `TEST_POSTGRES_URL` 可执行同样的迁移测试；未设置时有一项 skip。该测试拒绝非空库，**不要指向业务数据库**。
 
-当前本地验证结果、浏览器检查与真实模型验证边界见 [2026-10-18 验证记录](docs/verification-2026-10-18.md)；此前版本记录保留在 [2026-10-15 验证记录](docs/verification.md)。
+当前检查与历史评估统一整理在 [验证记录](docs/verification.md)。操作流程见 [使用说明](docs/guide.md)，开发契约见 [架构与 API](docs/architecture.md)，后续改动建议见 [下一步修改建议](docs/next-steps.md)。
 
 ## 升级与生产配置
 
-升级前备份数据库、uploads 卷及原 `.env`。保留原 `ENCRYPTION_KEY`，否则旧 API key 无法解密。`0001`–`0009` 历史迁移保持不变；`0009_provider_catalog` 增加提供方类型，`0010_comparison` 新增论文结果对照表。账户、资料所有权、历史会话及原有模型预设不重置。
+升级前备份数据库、uploads 卷及原 `.env`。保留原 `ENCRYPTION_KEY`，否则旧 API key 无法解密。`0001`–`0010` 历史迁移保持不变；新增 `0011_research_comparisons` 将已有实验核验记录接入统一历史，保留核验内容、人工修改与确认状态。账户、资料所有权、历史会话及原有模型预设不重置。升级步骤与兼容接口见 [架构说明](docs/architecture.md)。
 
 显式环境密钥优先于自动文件。多进程首次启动使用文件锁及原子写入，共享同一组随机密钥；文件损坏时要求恢复，避免静默换钥。备份数据库时同时备份密钥文件或显式环境配置。
 
@@ -118,7 +118,7 @@ npm run build
 ## 代码结构与约定
 
 ```text
-backend/app/domain/              领域规则、预算与配置值
+backend/app/domain/              领域规则、协作约束与配置值
 backend/app/application/repo/    仓库端口
 backend/app/application/uow/     事务端口
 backend/app/application/service/ 用例编排

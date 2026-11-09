@@ -4,32 +4,31 @@ from uuid import uuid4
 from sqlalchemy import delete
 from sqlmodel import Session, select
 
-from app.core.crypto import decrypt_secret
-from app.core.endpoints import validate_provider_url
 from app.domain.research import (
     ConversationNotFound,
     ConversationRecord,
-    DocumentNotFound,
     HistoryMessage,
     PreparedResearch,
     ProviderConfig,
-    ProviderNotConfigured,
     ResearchCommand,
     ResearchResult,
     RunStatus,
 )
+from app.infrastructure.repo.resources import resolve_provider, selected_documents
 from app.infrastructure.search.retrieval import retrieve_chunks
 from app.models.accounts import ApiProvider
+from app.models.comparison import ComparisonRecord
 from app.models.conversations import Conversation, Message, ResearchRun
-from app.models.documents import SourceDocument
 
 
-def _record(conversation: Conversation) -> ConversationRecord:
+def _record(conversation: Conversation, comparison_id: int | None = None) -> ConversationRecord:
     return ConversationRecord(
         id=int(conversation.id),
         title=conversation.title,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
+        kind="comparison" if comparison_id is not None else "research",
+        comparison_id=comparison_id,
     )
 
 
@@ -45,11 +44,17 @@ class SqlResearchRepository:
 
     def list_conversations(self, user_id: int) -> list[ConversationRecord]:
         rows = self.session.exec(
-            select(Conversation)
+            select(Conversation, ComparisonRecord.id)
+            .outerjoin(ComparisonRecord, ComparisonRecord.conversation_id == Conversation.id)
             .where(Conversation.user_id == user_id)
             .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
         ).all()
-        return [_record(row) for row in rows]
+        return [_record(row, comparison_id) for row, comparison_id in rows]
+
+    def _comparison_id(self, conversation_id: int) -> int | None:
+        return self.session.exec(
+            select(ComparisonRecord.id).where(ComparisonRecord.conversation_id == conversation_id)
+        ).first()
 
     def messages(self, user_id: int, conversation_id: int) -> list[dict]:
         self._owned(user_id, conversation_id)
@@ -90,49 +95,29 @@ class SqlResearchRepository:
         conversation.updated_at = datetime.now(UTC)
         self.session.add(conversation)
         self.session.flush()
-        return _record(conversation)
+        return _record(conversation, self._comparison_id(conversation_id))
 
     def delete(self, user_id: int, conversation_id: int) -> None:
         conversation = self._owned(user_id, conversation_id)
+        self.session.exec(
+            delete(ComparisonRecord).where(ComparisonRecord.conversation_id == conversation_id)
+        )
         self.session.exec(delete(ResearchRun).where(ResearchRun.conversation_id == conversation_id))
         self.session.exec(delete(Message).where(Message.conversation_id == conversation_id))
         self.session.delete(conversation)
 
     def _provider(self, user_id: int, provider_id: int | None) -> ProviderConfig:
-        query = select(ApiProvider).where(ApiProvider.user_id == user_id)
-        if provider_id is not None:
-            query = query.where(ApiProvider.id == provider_id)
-        provider = self.session.exec(query.order_by(ApiProvider.updated_at.desc())).first()
-        if provider is None:
-            raise ProviderNotConfigured("请先创建并选择一个模型预设")
-        key = decrypt_secret(provider.api_key_encrypted)
-        if not key:
-            raise ProviderNotConfigured("该模型预设缺少 API 密钥")
-        return ProviderConfig(
-            id=int(provider.id),
-            name=provider.name,
-            base_url=validate_provider_url(provider.base_url),
-            model=provider.model,
-            api_key=key,
-            provider_type=provider.provider_type,
-        )
+        return resolve_provider(self.session, user_id, provider_id)
 
     def start(self, user_id: int, command: ResearchCommand) -> PreparedResearch:
         provider = self._provider(user_id, command.provider_id)
         if command.document_ids:
-            requested = set(command.document_ids)
-            documents = self.session.exec(
-                select(SourceDocument).where(
-                    SourceDocument.id.in_(requested),
-                    SourceDocument.user_id == user_id,
-                    SourceDocument.status == "ready",
-                )
-            ).all()
-            if {document.id for document in documents} != requested:
-                raise DocumentNotFound("选中的资料不存在、尚未就绪或无权访问")
+            selected_documents(self.session, user_id, command.document_ids)
         history = ()
         if command.conversation_id is not None:
             conversation = self._owned(user_id, command.conversation_id)
+            if self._comparison_id(command.conversation_id) is not None:
+                raise ValueError("该记录为实验核验，请新建研究会话后继续问答")
             recent = self.session.exec(
                 select(Message)
                 .where(Message.conversation_id == conversation.id, Message.status == "completed")

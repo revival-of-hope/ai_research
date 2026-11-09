@@ -29,6 +29,7 @@ from app.domain.research import ProviderConfig
 from app.infrastructure.uow.comparison import SqlComparisonUnitOfWork
 from app.models.accounts import User
 from app.models.comparison import ComparisonRecord
+from app.models.conversations import Conversation
 
 TEST_URL = os.environ.get("TEST_POSTGRES_URL")
 pytestmark = pytest.mark.skipif(not TEST_URL, reason="Set TEST_POSTGRES_URL to a dedicated test DB")
@@ -70,12 +71,16 @@ def test_stale_field_edit_cannot_overwrite_a_committed_confirmation(monkeypatch)
                 )
                 session.add(user)
                 session.flush()
+                conversation = Conversation(user_id=user.id, title="实验核验")
+                session.add(conversation)
+                session.flush()
                 fields = field_dicts(build_fields(
                     {"dataset": Evidence("ImageNet", "Dataset ImageNet", 1)},
                     {"dataset": Evidence("ImageNet", "Dataset ImageNet", 2)},
                 ))
                 record = ComparisonRecord(
                     user_id=user.id,
+                    conversation_id=conversation.id,
                     paper_document_id=1,
                     run_document_id=2,
                     paper_name="paper",

@@ -139,7 +139,7 @@ async def extract_evidence(
         logger.warning("UC08 extraction failed: error_type=%s", type(error).__name__)
         if isinstance(error, UnexpectedModelBehavior):
             raise EvidenceExtractionError(
-                "模型未返回符合字段结构的结果（已尝试一次重试）；"
+                "模型没有返回可用的核验内容（已重试一次）；"
                 "请缩短目标实验描述后重试或更换兼容的模型。"
             ) from None
         raise EvidenceExtractionError(provider_error_message(error)) from None

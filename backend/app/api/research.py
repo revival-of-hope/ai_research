@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
+from app.api.comparisons import router as comparison_router
 from app.api.deps import CurrentUser, SessionDep
 from app.application.service.research import ResearchService
 from app.domain.research import (
@@ -27,6 +28,7 @@ from app.schemas.research import (
 )
 
 router = APIRouter(prefix="/research", tags=["research"])
+router.include_router(comparison_router)
 
 
 def research_service(session: Session) -> ResearchService:

@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-from dataclasses import replace
 from types import SimpleNamespace
 
 import anyio
@@ -10,6 +9,7 @@ import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
+from pydantic_ai.usage import RequestUsage
 from sqlalchemy import event
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -105,7 +105,7 @@ async def collect(workspace, prepared):
     return [item async for item in workspace.stream(prepared)]
 
 
-def test_real_tools_delegate_children_share_budget_and_persist(database):
+def test_real_tools_delegate_children_share_collaboration_capacity_and_persist(database):
     observed_tool_results = []
 
     def researcher(messages, info):
@@ -146,7 +146,7 @@ def test_real_tools_delegate_children_share_budget_and_persist(database):
     )
     done = events[-1].data
     assert done["usage"]["agents"] == 3
-    assert done["usage"]["searches"] <= 9
+    assert done["usage"]["searches"] == 4
     assert len(done["sources"]) == 1  # Duplicate URLs have a single stable citation label.
     with Session(database[0]) as session:
         run = session.get(ResearchRun, prepared.run_id)
@@ -160,48 +160,80 @@ def test_real_tools_delegate_children_share_budget_and_persist(database):
         assert run.model == "custom-model-with-tools"
 
 
-def test_request_budget_is_hard_and_failed_run_has_no_success_message(database):
-    command = ResearchCommand("Research the evidence")
-    limits = replace(ResearchLimits.for_command(command), requests=1)
-    workspace = service(database, limits=limits)
-    prepared = workspace.prepare(database[1], command)
+def test_research_continues_beyond_old_api_and_sdk_limits_and_persists_usage(database):
+    searches = []
+
+    def researcher(messages, info):
+        returned_searches = sum(
+            isinstance(part, ToolReturnPart) and part.tool_name == "search_web"
+            for message in messages
+            for part in message.parts
+        )
+        if returned_searches < 55:
+            return ModelResponse(
+                parts=[ToolCallPart("search_web", {"query": f"evidence {returned_searches}"})],
+                usage=RequestUsage(input_tokens=3_000, output_tokens=500),
+            )
+        return ModelResponse(
+            parts=[ToolCallPart(info.output_tools[0].name, {
+                "summary": "All evidence checked", "source_labels": ["Web 1"], "gaps": [],
+            })],
+            usage=RequestUsage(input_tokens=3_000, output_tokens=500),
+        )
+
+    async def repeated_search(query, limit):
+        searches.append(query)
+        return await search(query, limit)
+
+    command = ResearchCommand("Research the evidence", web_search=True, max_agents=1, max_depth=0)
+    engine, user_id, *_ = database
+    workspace = ResearchService(
+        lambda: SqlResearchUnitOfWork(Session(engine), owns_session=True),
+        lambda prepared: PydanticResearchRunner(
+            prepared, models=models(FunctionModel(researcher)), search=repeated_search,
+        ),
+    )
+    prepared = workspace.prepare(user_id, command)
     events = asyncio.run(collect(workspace, prepared))
-    assert events[-1].type == "error"
-    assert "预算" in events[-1].data["message"]
-    assert not any(item.type == "done" for item in events)
-    with Session(database[0]) as session:
+    assert events[-1].type == "done", events[-1]
+    assert len(searches) == 56  # Initial evidence search plus 55 researcher tool calls.
+    usage = events[-1].data["usage"]
+    assert usage["requests"] > 50  # Also exceed Pydantic AI's default request ceiling.
+    assert usage["tool_calls"] == 55 and usage["searches"] == 56
+    assert usage["total_tokens"] >= 196_000
+    with Session(engine) as session:
         run = session.get(ResearchRun, prepared.run_id)
-        assert run.status == "failed"
-        assert run.usage["requests"] == 1
-        assert session.exec(select(Message).where(Message.role == "assistant")).first() is None
+        assistant = session.exec(select(Message).where(Message.role == "assistant")).one()
+        assert run.status == "completed"
+        assert run.usage == assistant.usage == usage
+        assert assistant.content
 
 
-def test_official_search_model_requests_and_tokens_share_research_budget(database, monkeypatch):
+def test_official_search_model_requests_and_tokens_are_counted_without_quota(database, monkeypatch):
     def factory(provider, *, on_model_request, on_usage):
         async def official_search(query, limit):
             on_model_request()
-            on_usage({"input_tokens": 170, "output_tokens": 30, "total_tokens": 200})
+            on_usage({"input_tokens": 130_000, "output_tokens": 30, "total_tokens": 130_030})
             return await search(query, limit)
 
         return official_search
 
     monkeypatch.setattr("app.infrastructure.agents.research.make_web_search", factory)
     command = ResearchCommand("Research the evidence", web_search=True)
-    limits = replace(ResearchLimits.for_command(command), requests=4)
     engine, user_id, *_ = database
     workspace = ResearchService(
         lambda: SqlResearchUnitOfWork(Session(engine), owns_session=True),
-        lambda prepared: PydanticResearchRunner(prepared, models=models(), limits=limits),
+        lambda prepared: PydanticResearchRunner(prepared, models=models()),
     )
     prepared = workspace.prepare(user_id, command)
     events = asyncio.run(collect(workspace, prepared))
-    assert events[-1].type == "error" and "预算" in events[-1].data["message"]
+    assert events[-1].type == "done", events[-1]
     with Session(engine) as session:
         run = session.get(ResearchRun, prepared.run_id)
-        assert run.usage["requests"] == 4  # Search consumes one of the four model reservations.
-        assert run.usage["input_tokens"] >= 170 and run.usage["output_tokens"] >= 30
+        assert run.usage["requests"] == 5  # Four team roles and one search model request.
+        assert run.usage["input_tokens"] >= 130_000 and run.usage["output_tokens"] >= 30
         assert run.usage["searches"] == 1
-        assert run.status == "failed"
+        assert run.status == "completed"
 
 
 def test_upstream_exception_body_is_never_exposed_or_persisted(database):
@@ -381,7 +413,7 @@ def test_quick_mode_and_domain_limits_are_deterministic():
     from app.domain.research import ResearchBudget
 
     limits = ResearchLimits.for_command(ResearchCommand("Research evidence", mode="quick"))
-    assert limits.max_agents == 0 and limits.max_depth == 0 and limits.requests == 1
+    assert limits.max_agents == 0 and limits.max_depth == 0
     budget = ResearchBudget(limits)
     with pytest.raises(BudgetExceeded):
         budget.reserve_agent(0)

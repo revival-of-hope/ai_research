@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MemoryRouter } from "react-router-dom";
+import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router-dom";
 import ts from "typescript";
 
 const require = createRequire(import.meta.url);
@@ -38,6 +38,10 @@ const { ComparisonSourceStep } = await import(await sourceModule("../src/compone
 const { ComparisonReview } = await import(await sourceModule("../src/components/comparison-review.tsx"));
 const { WorkspaceNavigation } = await import(await sourceModule("../src/components/shell/workspace-navigation.tsx"));
 const { WorkspaceBreadcrumb } = await import(await sourceModule("../src/components/shell/workspace-breadcrumb.tsx"));
+const { shouldBlockUnsavedChanges } = await import(await sourceModule("../src/lib/use-unsaved-changes.ts"));
+const { AuthProvider } = await import(await sourceModule("../src/lib/auth.tsx"));
+const { ResearchTaskNavigation } = await import(await sourceModule("../src/components/research/research-task-navigation.tsx"));
+const { WorkspaceHistory } = await import(await sourceModule("../src/components/shell/workspace-history.tsx"));
 const { ResearchSidebar } = await import(await sourceModule("../src/components/research/research-sidebar.tsx"));
 const callbacks = Object.fromEntries(["onChange", "onToggleDocument", "onToggleWeb", "onModeChange", "onMaxAgentsChange", "onMaxDepthChange", "onSelectProvider", "onConfigureProviders", "onOpenSources", "onSubmit", "onStop"].map((name) => [name, () => {}]));
 const composer = { value: "Explain this", documents: [], providers: [], selectedDocs: [], webSearch: true, maxAgents: 3, maxDepth: 1, busy: false, ...callbacks };
@@ -74,13 +78,13 @@ test("sidebar mode and collaboration controls lock while the workspace is unavai
 });
 
 test("both workspaces use matching research and comparison navigation actions", () => {
-  for (const pathname of ["/research", "/comparison"]) {
+  for (const pathname of ["/research", "/research/comparisons"]) {
     const html = renderToStaticMarkup(createElement(MemoryRouter, { initialEntries: [pathname] },
       createElement(WorkspaceNavigation, { isAdmin: true })));
     assert.equal((html.match(/aria-label="工作区功能导航"/g) || []).length, 1);
     assert.equal((html.match(/aria-label="工作区常用功能"/g) || []).length, 1);
     assert.match(html, /href="\/research"[^>]*>.*?新建研究/);
-    assert.match(html, /href="\/comparison"[^>]*>.*?实验结果对照/);
+    assert.match(html, /href="\/research\/comparisons"[^>]*>.*?实验核验/);
     for (const [path, label] of [
       ["/sources", "资料库"],
       ["/settings", "模型预设"],
@@ -95,7 +99,7 @@ test("both workspaces use matching research and comparison navigation actions", 
 });
 
 test("shared breadcrumb keeps page hierarchy without duplicating page headers", () => {
-  for (const page of ["研究问答", "实验结果对照", "Token 用量"]) {
+  for (const page of ["研究问答", "实验核验", "Token 用量"]) {
     const html = renderToStaticMarkup(createElement(MemoryRouter, null,
       createElement(WorkspaceBreadcrumb, { current: page })));
     assert.equal((html.match(/aria-label="面包屑"/g) || []).length, 1);
@@ -113,7 +117,7 @@ test("research sidebar keeps mode controls and history within common navigation"
   const html = renderToStaticMarkup(createElement(MemoryRouter, { initialEntries: ["/research"] },
     createElement(ResearchSidebar, props)));
   assert.equal((html.match(/aria-label="工作区功能导航"/g) || []).length, 1);
-  assert.match(html, /实验结果对照/);
+  assert.match(html, /实验核验/);
   assert.match(html, /回答模式/);
   assert.match(html, /最近研究/);
   assert.match(html, /搜索历史记录/);
@@ -147,15 +151,16 @@ test("deep replies still display collaboration while quick search has a small st
 });
 
 test("UC08 page presents the upload and saved-results workflow", () => {
-  const markup = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ComparisonPage)));
+  const router = createMemoryRouter([{ path: "*", element: createElement(AuthProvider, null, createElement(ComparisonPage)) }]);
+  const markup = renderToStaticMarkup(createElement(RouterProvider, { router }));
   assert.match(markup, /添加论文/);
   assert.match(markup, /本地实验结果/);
   assert.match(markup, /上传论文/);
   assert.match(markup, /上传实验摘要/);
   assert.match(markup, /没有文件？直接粘贴结果/);
   assert.doesNotMatch(markup, /<textarea/);
-  assert.match(markup, /目标指标及实验行/);
-  assert.match(markup, /已保存的对照记录/);
+  assert.match(markup, /要核对的指标和实验/);
+  assert.match(markup, /已保存的核验记录/);
   assert.match(markup, /我的资料/);
   assert.match(markup, /发送至所选模型/);
 });
@@ -191,16 +196,82 @@ test("UC08 evidence review presents both selected sources, a field table and ori
   };
   const markup = renderToStaticMarkup(createElement(MemoryRouter, null,
     createElement(ComparisonReview, { comparison, onBack() {}, onEdit() {}, onReview() {}, onConfirm() {}, busy: false })));
-  assert.match(markup, /本次使用的证据/);
+  assert.match(markup, /本次使用的资料/);
   assert.match(markup, /paper.pdf/);
   assert.match(markup, /run.md/);
-  assert.match(markup, /实验条件与指标对照/);
+  assert.match(markup, /核对实验条件和结果/);
   assert.match(markup, /数据划分/);
-  assert.match(markup, /不能判定为同条件实验/);
-  assert.match(markup, /查看完整文本片段 #4/);
-  assert.match(markup, /修订引用摘录或位置/);
+  assert.match(markup, /实验条件存在差异或尚未核实/);
+  assert.match(markup, /查看原文/);
+  assert.match(markup, /修改引用的原文/);
   assert.match(markup, /原文摘录/);
   assert.match(markup, /标记未解决/);
   assert.match(markup, /确认并保存摘要/);
   assert.match(markup, /disabled=""/);
+});
+
+
+test("research task entry connects question answering, research and experiment verification", () => {
+  for (const task of ["quick", "deep", "comparison"]) {
+    const markup = renderToStaticMarkup(createElement(MemoryRouter, null,
+      createElement(ResearchTaskNavigation, { task })));
+    assert.match(markup, /aria-label="选择研究任务"/);
+    assert.match(markup, /快速问答/);
+    assert.match(markup, /深度研究/);
+    assert.match(markup, /实验核验/);
+    assert.match(markup, /href="\/research\/comparisons"/);
+    assert.match(markup, /href="\/research\?mode=quick"/);
+    assert.match(markup, /href="\/research\?mode=deep"/);
+    assert.equal((markup.match(/aria-current="page"/g) || []).length, 1);
+  }
+});
+
+test("shared history preserves experiment and research records with distinct accessible icons", () => {
+  const props = { conversations: [
+    { id: 1, title: "研究历史", kind: "research" },
+    { id: 2, title: "论文和实验", kind: "comparison", comparison_id: 7 },
+  ], activeId: 2, busy: false, loading: false, onOpen() {}, async onRename() {}, async onDelete() {} };
+  const markup = renderToStaticMarkup(createElement(WorkspaceHistory, props));
+  assert.match(markup, /研究历史/);
+  assert.match(markup, /论文和实验/);
+  assert.match(markup, /aria-label="实验核验"/);
+  assert.match(markup, /aria-current="page"/);
+  assert.match(markup, /搜索历史记录/);
+  assert.match(markup, /重命名 论文和实验/);
+  assert.match(markup, /删除 论文和实验/);
+});
+
+
+test("unsaved experiment changes block shared history, query changes and browser back until confirmed", async (context) => {
+  for (const destination of ["/research?conversation=5", "/research/comparisons?comparison=2", -1]) {
+    let dirty = true;
+    const router = createMemoryRouter([{ path: "*", element: null }], {
+      initialEntries: ["/research", "/research/comparisons?comparison=1"],
+      initialIndex: 1,
+    });
+    context.after(() => router.dispose());
+    router.getBlocker("review", ({ currentLocation, nextLocation }) =>
+      shouldBlockUnsavedChanges(dirty, currentLocation, nextLocation));
+    await router.navigate(destination);
+    assert.equal(router.state.blockers.get("review").state, "blocked");
+    assert.equal(router.state.location.pathname, "/research/comparisons");
+    assert.equal(router.state.location.search, "?comparison=1");
+    router.state.blockers.get("review").reset();
+    assert.equal(router.state.location.search, "?comparison=1");
+    await router.navigate(destination);
+    const changed = new Promise((resolve) => {
+      const unsubscribe = router.subscribe((state) => {
+        if (state.location.pathname + state.location.search !== "/research/comparisons?comparison=1") {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+    router.state.blockers.get("review").proceed();
+    await changed;
+    assert.notEqual(router.state.location.pathname + router.state.location.search, "/research/comparisons?comparison=1");
+    dirty = false;
+    await router.navigate("/research/comparisons?comparison=3");
+    assert.equal(router.state.location.search, "?comparison=3");
+  }
 });

@@ -54,6 +54,7 @@ class ComparisonPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    conversation_id: int
     metric: str
     paper_document_id: int
     run_document_id: int
@@ -69,6 +70,7 @@ class ComparisonSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    conversation_id: int
     metric: str
     paper_name: str
     run_name: str

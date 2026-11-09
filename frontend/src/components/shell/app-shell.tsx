@@ -5,16 +5,18 @@ import { Outlet, useLocation } from "react-router-dom";
 import { WorkspaceAccount } from "@/components/shell/workspace-account";
 import { WorkspaceBreadcrumb } from "@/components/shell/workspace-breadcrumb";
 import { WorkspaceNavigation } from "@/components/shell/workspace-navigation";
+import { WorkspaceHistoryPanel } from "@/components/shell/workspace-history-panel";
 import { useAuth } from "@/lib/auth";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 
 function MobileNavigation({
-  isAdmin, email, onLogout, onClose,
+  isAdmin, email, onLogout, onClose, busy,
 }: {
   isAdmin?: boolean;
   email?: string;
   onLogout: () => void;
   onClose: () => void;
+  busy: boolean;
 }) {
   const root = useRef<HTMLDivElement>(null);
   useDialogFocus(root, onClose);
@@ -23,7 +25,7 @@ function MobileNavigation({
     <div ref={root} role="dialog" aria-modal="true" aria-labelledby="mobile-workspace-label"
       className="relative flex h-dvh w-[min(300px,88vw)] flex-col border-r border-slate-200 bg-[#f7f8fa] p-4 shadow-xl">
       <WorkspaceNavigation mobile isAdmin={isAdmin} onCloseMobile={onClose} />
-      <div className="min-h-0 flex-1" />
+      <WorkspaceHistoryPanel onNavigate={onClose} busy={busy} />
       <WorkspaceAccount email={email} isAdmin={isAdmin} onLogout={onLogout} onNavigate={onClose} />
     </div>
   </div>;
@@ -34,8 +36,9 @@ export function AppShell() {
   const { pathname } = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [error, setError] = useState("");
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const currentPage: Record<string, string> = {
-    "/comparison": "实验结果对照",
+    "/research/comparisons": "实验核验",
     "/sources": "资料库",
     "/settings": "模型预设",
     "/usage": "Token 用量",
@@ -54,7 +57,7 @@ export function AppShell() {
   return <div className="min-h-dvh bg-white text-slate-950">
     <aside aria-label="工作区导航" className="fixed inset-y-0 left-0 hidden w-[272px] flex-col border-r border-slate-200/70 bg-[#f7f8fa] p-4 lg:flex">
       <WorkspaceNavigation isAdmin={user?.is_admin} />
-      <div className="min-h-0 flex-1" />
+      <WorkspaceHistoryPanel busy={workspaceBusy} />
       <WorkspaceAccount email={user?.email} isAdmin={user?.is_admin} onLogout={handleLogout} />
     </aside>
     <div className="min-h-dvh lg:pl-[272px]">
@@ -65,12 +68,12 @@ export function AppShell() {
       </header>
       <main className="w-full px-4 py-6 sm:px-7 sm:py-8">
         {error && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-xs text-red-600">{error}</p>}
-        <Outlet />
+        <Outlet context={{ setWorkspaceBusy }} />
       </main>
     </div>
     {mobileOpen && <MobileNavigation
       isAdmin={user?.is_admin} email={user?.email}
-      onLogout={handleLogout} onClose={() => setMobileOpen(false)}
+      onLogout={handleLogout} onClose={() => setMobileOpen(false)} busy={workspaceBusy}
     />}
   </div>;
 }

@@ -23,19 +23,19 @@ export function WorkspaceNavigation({
   return <>
     <div className="flex h-12 shrink-0 items-center gap-2.5 px-2">
       <span className="grid size-8 place-items-center rounded-xl bg-blue-600 text-white"><Sparkles className="size-4" /></span>
-      <span id={mobile ? "mobile-workspace-label" : undefined} className="text-lg font-semibold tracking-tight">Research AI</span>
+      <span id={mobile ? "mobile-workspace-label" : undefined} className="text-lg font-semibold tracking-tight">研知 Research</span>
       {mobile && <button type="button" aria-label="关闭侧栏" className="ml-auto rounded-lg p-2 text-slate-500 hover:bg-white" onClick={onCloseMobile}><X className="size-5" /></button>}
     </div>
     <nav aria-label="工作区功能导航" className="mt-5 shrink-0 space-y-2">
-      <NavLink to="/research" onClick={onNewResearch ? (event) => {
+      <NavLink end to="/research" onClick={onNewResearch ? (event) => {
         event.preventDefault(); if (disabled) return; onNewResearch(); closeMobile();
       } : closeMobile} aria-disabled={disabled && !!onNewResearch}
         className={({ isActive }) => cn(actionClass, isActive ? actionActive : actionIdle, disabled && onNewResearch && "pointer-events-none opacity-50")}>
         <Plus className="size-4 shrink-0" />新建研究
       </NavLink>
-      <NavLink to="/comparison" onClick={closeMobile}
+      <NavLink to="/research/comparisons" onClick={closeMobile}
         className={({ isActive }) => cn(actionClass, isActive ? actionActive : actionIdle)}>
-        <FileSearch className="size-4 shrink-0" />实验结果对照
+        <FileSearch className="size-4 shrink-0" />实验核验
       </NavLink>
     </nav>
     <nav aria-label="工作区常用功能" className="mt-4 shrink-0 space-y-1 border-t border-slate-200/70 pt-3">

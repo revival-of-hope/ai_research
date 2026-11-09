@@ -36,7 +36,7 @@ async def _extract_pair(
         except Exception as error:
             # Preserve cancellation; distinguish a failed paper from a failed run.
             if isinstance(error, EvidenceExtractionError):
-                raise EvidenceExtractionError(f"{label}抽取失败：{error}") from None
+                raise EvidenceExtractionError(f"{label}读取失败：{error}") from None
             raise
 
     tasks = (
@@ -110,7 +110,7 @@ class ComparisonService:
                 )
         except TimeoutError:
             raise ComparisonTimeout(
-                "两份资料的候选抽取超过 120 秒，请缩小资料范围后重试。"
+                "整理两份资料已超过 120 秒，请缩小资料范围后重试。"
             ) from None
         fields = field_dicts(build_fields(
             _verified_fields(paper, paper_fields), _verified_fields(run, run_fields),
@@ -129,16 +129,16 @@ class ComparisonService:
             raise ValueError("没有提交复核操作")
         keys = [item["key"] for item in updates]
         if len(keys) != len(set(keys)):
-            raise ValueError("同一字段不能重复更新")
+            raise ValueError("同一项内容不能重复提交")
         with self._uow() as uow:
             record = uow.comparisons.get_for_update(user_id, comparison_id)
             if record["status"] == "confirmed":
-                raise ComparisonConflict("已确认的对照记录不可再修改")
+                raise ComparisonConflict("已确认的核验记录不可再修改")
             fields = read_fields(record["fields"])
             by_key = {item.key: index for index, item in enumerate(fields)}
             for item in updates:
                 if item["key"] not in by_key:
-                    raise ValueError("未知对照字段")
+                    raise ValueError("要修改的内容不存在")
                 index = by_key[item["key"]]
                 current = fields[index]
 

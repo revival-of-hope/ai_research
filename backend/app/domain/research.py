@@ -47,13 +47,11 @@ class ResearchCommand:
 
 @dataclass(frozen=True)
 class ResearchLimits:
+    """Collaboration and time bounds; API usage is measured without run quotas."""
+
     max_agents: int
     max_depth: int
     concurrency: int
-    requests: int
-    searches: int
-    tool_calls: int
-    total_tokens: int
     timeout_seconds: int
     request_timeout_seconds: int = 90
 
@@ -65,10 +63,6 @@ class ResearchLimits:
             max_agents=agents,
             max_depth=0 if quick else command.max_depth,
             concurrency=max(1, min(3, agents)),
-            requests=1 if quick else 18 + agents * 4,
-            searches=1 if quick else agents * 3,
-            tool_calls=0 if quick else agents * 6,
-            total_tokens=30_000 if quick else 120_000,
             timeout_seconds=180 if quick else 600,
         )
 
@@ -95,19 +89,13 @@ class ResearchBudget:
         self.agents += 1
         return self.agents
 
-    def reserve_request(self) -> None:
-        if self.requests >= self.limits.requests:
-            raise BudgetExceeded("已达到本次研究的模型请求预算")
+    def record_request(self) -> None:
         self.requests += 1
 
-    def reserve_search(self) -> None:
-        if self.searches >= self.limits.searches:
-            raise BudgetExceeded("已达到本次研究的联网搜索预算")
+    def record_search(self) -> None:
         self.searches += 1
 
-    def reserve_tool(self) -> None:
-        if self.tool_calls >= self.limits.tool_calls:
-            raise BudgetExceeded("已达到本次研究的工具调用预算")
+    def record_tool(self) -> None:
         self.tool_calls += 1
 
 
@@ -133,6 +121,8 @@ class ConversationRecord:
     title: str
     created_at: datetime
     updated_at: datetime
+    kind: str = "research"
+    comparison_id: int | None = None
 
 
 @dataclass(frozen=True)
